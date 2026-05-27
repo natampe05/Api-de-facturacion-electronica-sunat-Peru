@@ -25,6 +25,16 @@ Route::post('/facturar', [FacturacionController::class, 'facturar']);
 
 // Información del sistema
 Route::get('/system/info', [AuthController::class, 'systemInfo']);
+Route::get('/debug-env', function() {
+    return [
+        'DB_CONNECTION' => env('DB_CONNECTION'),
+        'DB_HOST' => env('DB_HOST'),
+        'DB_PORT' => env('DB_PORT'),
+        'DB_DATABASE' => env('DB_DATABASE'),
+        'DB_USERNAME' => env('DB_USERNAME'),
+        'has_password' => !empty(env('DB_PASSWORD')),
+    ];
+});
 
 // Setup del sistema
 Route::prefix('setup')->group(function () {
