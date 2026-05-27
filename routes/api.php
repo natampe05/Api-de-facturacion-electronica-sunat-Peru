@@ -35,6 +35,20 @@ Route::get('/debug-env', function() {
         'has_password' => !empty(env('DB_PASSWORD')),
     ];
 });
+Route::get('/test-db', function() {
+    try {
+        $count = DB::table('empresas')->count();
+        return [
+            'success' => true,
+            'empresas_count' => $count,
+        ];
+    } catch (\Exception $e) {
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+        ];
+    }
+});
 
 // Setup del sistema
 Route::prefix('setup')->group(function () {
