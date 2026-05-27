@@ -9,30 +9,35 @@
             box-sizing: border-box;
         }
 
+        @page {
+            margin: 0;
+        }
+
         body {
             font-family: 'Helvetica', Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
+            margin: 0;
+            padding: 10pt;
+            width: 80mm;
+            background-color: white;
+        }
+
+        .container {
+            width: 100%;
+            margin: 0;
+            padding: 0;
         }
 
         .ticket-container {
             width: 100%;
-            max-width: 300px;
             background-color: white;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-            overflow: hidden;
-            margin: 0 auto;
+            margin: 0;
+            padding: 0;
         }
 
         .ticket {
-            width: 80mm;
-            /* Ancho estándar para tickets de 80mm */
-            padding: 10pt;
-            margin: 0 auto;
+            width: 100%;
+            padding: 0;
+            margin: 0;
         }
 
         /* ================= HEADER ================= */

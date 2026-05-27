@@ -15,7 +15,7 @@ trait HandlesPdfGeneration
     protected function generateDocumentPdf($document, string $documentType, Request $request): JsonResponse
     {
         try {
-            $format = $request->get('format', 'A4');
+            $format = $request->get('format', '80mm');
             
             // Validar formato
             $pdfService = app(PdfService::class);
@@ -70,7 +70,7 @@ trait HandlesPdfGeneration
     protected function downloadDocumentPdf($document, Request $request)
     {
         try {
-            $format = $request->get('format', 'A4');
+            $format = $request->get('format', '80mm');
             
             // Validar formato
             $pdfService = app(PdfService::class);

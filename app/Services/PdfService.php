@@ -40,7 +40,7 @@ class PdfService
         'ticket' => ['width' => 50, 'height' => 150, 'unit' => 'mm'], // Nuevo formato optimizado
     ];
 
-    public function generateInvoicePdf($invoice, string $format = 'A4'): string
+    public function generateInvoicePdf($invoice, string $format = '80mm'): string
     {
         $data = $this->prepareInvoiceData($invoice);
         $data['format'] = $format;
@@ -53,7 +53,7 @@ class PdfService
         return $pdf->output();
     }
 
-    public function generateBoletaPdf($boleta, string $format = 'A4'): string
+    public function generateBoletaPdf($boleta, string $format = '80mm'): string
     {
         $data = $this->prepareBoletaData($boleta);
         $data['format'] = $format;
@@ -66,7 +66,7 @@ class PdfService
         return $pdf->output();
     }
 
-    public function generateCreditNotePdf($creditNote, string $format = 'A4'): string
+    public function generateCreditNotePdf($creditNote, string $format = '80mm'): string
     {
         $data = $this->prepareCreditNoteData($creditNote);
         $data['format'] = $format;
@@ -79,7 +79,7 @@ class PdfService
         return $pdf->output();
     }
 
-    public function generateDebitNotePdf($debitNote, string $format = 'A4'): string
+    public function generateDebitNotePdf($debitNote, string $format = '80mm'): string
     {
         $data = $this->prepareDebitNoteData($debitNote);
         $data['format'] = $format;
@@ -92,7 +92,7 @@ class PdfService
         return $pdf->output();
     }
 
-    public function generateDispatchGuidePdf($dispatchGuide, string $format = 'A4'): string
+    public function generateDispatchGuidePdf($dispatchGuide, string $format = '80mm'): string
     {
         $data = $this->prepareDispatchGuideData($dispatchGuide);
         $data['format'] = $format;
@@ -105,7 +105,7 @@ class PdfService
         return $pdf->output();
     }
 
-    public function generateDailySummaryPdf($dailySummary, string $format = 'A4'): string
+    public function generateDailySummaryPdf($dailySummary, string $format = '80mm'): string
     {
         $data = $this->prepareDailySummaryData($dailySummary);
         $data['format'] = $format;
