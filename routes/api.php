@@ -14,10 +14,14 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ConsultaCpeController;
 use App\Http\Controllers\Api\SetupController;
 use App\Http\Controllers\Api\UbigeoController;
+use App\Http\Controllers\Api\FacturacionController;
 
 // ========================
 // RUTAS PÚBLICAS (SIN AUTENTICACIÓN)
 // ========================
+
+// Facturación electrónica SUNAT
+Route::post('/facturar', [FacturacionController::class, 'facturar']);
 
 // Información del sistema
 Route::get('/system/info', [AuthController::class, 'systemInfo']);
