@@ -402,11 +402,18 @@ class FacturacionController extends Controller
                 $pkeyOnlyPrivPass = openssl_pkey_get_private($onlyPrivateKeyPem, $passphrase);
                 $pkeyOnlyPrivNoPass = openssl_pkey_get_private($onlyPrivateKeyPem);
                 
+                // Convert to PKCS#1
+                $pkcs1PrivateKeyPem = $this->pkcs8ToPkcs1($privateKey);
+                $pkeyPkcs1Pass = $pkcs1PrivateKeyPem ? openssl_pkey_get_private($pkcs1PrivateKeyPem, $passphrase) : false;
+                $pkeyPkcs1NoPass = $pkcs1PrivateKeyPem ? openssl_pkey_get_private($pkcs1PrivateKeyPem) : false;
+                
                 $preparedPem = [
                     'reconstructed_with_pass' => is_resource($pkeyReconstructedPass) || $pkeyReconstructedPass instanceof \OpenSSLAsymmetricKey,
                     'reconstructed_no_pass' => is_resource($pkeyReconstructedNoPass) || $pkeyReconstructedNoPass instanceof \OpenSSLAsymmetricKey,
                     'only_priv_with_pass' => is_resource($pkeyOnlyPrivPass) || $pkeyOnlyPrivPass instanceof \OpenSSLAsymmetricKey,
                     'only_priv_no_pass' => is_resource($pkeyOnlyPrivNoPass) || $pkeyOnlyPrivNoPass instanceof \OpenSSLAsymmetricKey,
+                    'pkcs1_with_pass' => is_resource($pkeyPkcs1Pass) || $pkeyPkcs1Pass instanceof \OpenSSLAsymmetricKey,
+                    'pkcs1_no_pass' => is_resource($pkeyPkcs1NoPass) || $pkeyPkcs1NoPass instanceof \OpenSSLAsymmetricKey,
                     'reconstructed_len' => strlen($reconstructedPem),
                 ];
             } catch (\Exception $e) {
@@ -429,6 +436,7 @@ class FacturacionController extends Controller
                 'pkey_clean_no_pass' => is_resource($pkeyCleanNoPass) || $pkeyCleanNoPass instanceof \OpenSSLAsymmetricKey,
                 'prepared_pem_status' => $preparedPem,
                 'only_priv_pem' => $onlyPrivateKeyPem,
+                'pkcs1_pem' => $pkcs1PrivateKeyPem,
                 'prepare_error' => $prepareError,
                 'openssl_errors' => $opensslErrors,
             ]);
@@ -488,5 +496,26 @@ class FacturacionController extends Controller
         }
         
         return 'NÚMERO EN LETRAS';
+    }
+
+    private function pkcs8ToPkcs1($pkcs8Base64)
+    {
+        $der = base64_decode($pkcs8Base64);
+        if (!$der) return false;
+        
+        $oid = "\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01";
+        $pos = strpos($der, $oid);
+        if ($pos === false) return false;
+        
+        $seqPos = strpos($der, "\x30", $pos + strlen($oid));
+        if ($seqPos === false) return false;
+        
+        $pkcs1Der = substr($der, $seqPos);
+        
+        $pem = "-----BEGIN RSA PRIVATE KEY-----\n";
+        $pem .= rtrim(chunk_split(base64_encode($pkcs1Der), 64, "\n"), "\n") . "\n";
+        $pem .= "-----END RSA PRIVATE KEY-----";
+        
+        return $pem;
     }
 }
