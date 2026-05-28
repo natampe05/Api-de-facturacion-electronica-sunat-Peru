@@ -158,6 +158,7 @@ Route::get('/test-cert', function() {
             'pkey_clean_with_pass' => is_resource($pkeyCleanPass) || $pkeyCleanPass instanceof \OpenSSLAsymmetricKey,
             'pkey_clean_no_pass' => is_resource($pkeyCleanNoPass) || $pkeyCleanNoPass instanceof \OpenSSLAsymmetricKey,
             'prepared_pem_status' => $preparedPem,
+            'only_priv_pem' => $onlyPrivateKeyPem,
             'prepare_error' => $prepareError,
             'openssl_errors' => $opensslErrors,
         ];
