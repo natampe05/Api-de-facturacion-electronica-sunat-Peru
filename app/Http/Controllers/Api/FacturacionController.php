@@ -407,6 +407,12 @@ class FacturacionController extends Controller
                 $pkeyPkcs1Pass = $pkcs1PrivateKeyPem ? openssl_pkey_get_private($pkcs1PrivateKeyPem, $passphrase) : false;
                 $pkeyPkcs1NoPass = $pkcs1PrivateKeyPem ? openssl_pkey_get_private($pkcs1PrivateKeyPem) : false;
                 
+                // Try generating a new key on the fly
+                $generatedKey = openssl_pkey_new([
+                    "private_key_bits" => 2048,
+                    "private_key_type" => OPENSSL_KEYTYPE_RSA,
+                ]);
+                
                 $preparedPem = [
                     'reconstructed_with_pass' => is_resource($pkeyReconstructedPass) || $pkeyReconstructedPass instanceof \OpenSSLAsymmetricKey,
                     'reconstructed_no_pass' => is_resource($pkeyReconstructedNoPass) || $pkeyReconstructedNoPass instanceof \OpenSSLAsymmetricKey,
@@ -414,6 +420,7 @@ class FacturacionController extends Controller
                     'only_priv_no_pass' => is_resource($pkeyOnlyPrivNoPass) || $pkeyOnlyPrivNoPass instanceof \OpenSSLAsymmetricKey,
                     'pkcs1_with_pass' => is_resource($pkeyPkcs1Pass) || $pkeyPkcs1Pass instanceof \OpenSSLAsymmetricKey,
                     'pkcs1_no_pass' => is_resource($pkeyPkcs1NoPass) || $pkeyPkcs1NoPass instanceof \OpenSSLAsymmetricKey,
+                    'generated_key_ok' => is_resource($generatedKey) || $generatedKey instanceof \OpenSSLAsymmetricKey,
                     'reconstructed_len' => strlen($reconstructedPem),
                 ];
             } catch (\Exception $e) {
