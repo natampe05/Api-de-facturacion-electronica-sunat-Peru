@@ -120,9 +120,23 @@ Route::get('/test-cert', function() {
             $pkeyReconstructedPass = openssl_pkey_get_private($reconstructedPem, $passphrase);
             $pkeyReconstructedNoPass = openssl_pkey_get_private($reconstructedPem);
             
+            $outputPriv = [];
+            if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
+                $privateKey = preg_replace('/\s+/', '', $matches[1]);
+                $outputPriv[] = "-----BEGIN PRIVATE KEY-----";
+                $outputPriv[] = chunk_split($privateKey, 64, "\n");
+                $outputPriv[] = "-----END PRIVATE KEY-----";
+            }
+            $onlyPrivateKeyPem = implode("\n", $outputPriv);
+            
+            $pkeyOnlyPrivPass = openssl_pkey_get_private($onlyPrivateKeyPem, $passphrase);
+            $pkeyOnlyPrivNoPass = openssl_pkey_get_private($onlyPrivateKeyPem);
+            
             $preparedPem = [
                 'reconstructed_with_pass' => is_resource($pkeyReconstructedPass) || $pkeyReconstructedPass instanceof \OpenSSLAsymmetricKey,
                 'reconstructed_no_pass' => is_resource($pkeyReconstructedNoPass) || $pkeyReconstructedNoPass instanceof \OpenSSLAsymmetricKey,
+                'only_priv_with_pass' => is_resource($pkeyOnlyPrivPass) || $pkeyOnlyPrivPass instanceof \OpenSSLAsymmetricKey,
+                'only_priv_no_pass' => is_resource($pkeyOnlyPrivNoPass) || $pkeyOnlyPrivNoPass instanceof \OpenSSLAsymmetricKey,
                 'reconstructed_len' => strlen($reconstructedPem),
             ];
         } catch (\Exception $e) {
