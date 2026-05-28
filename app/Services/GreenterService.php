@@ -720,13 +720,13 @@ class GreenterService
         if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
             $privateKey = preg_replace('/\s+/', '', $matches[1]);
             $output[] = "-----BEGIN PRIVATE KEY-----";
-            $output[] = chunk_split($privateKey, 64, "\n");
+            $output[] = rtrim(chunk_split($privateKey, 64, "\n"), "\n");
             $output[] = "-----END PRIVATE KEY-----";
             $privateKeyExtracted = true;
         } elseif (preg_match('/-----BEGIN RSA PRIVATE KEY-----(.*?)-----END RSA PRIVATE KEY-----/s', $cleanedPem, $matches)) {
             $privateKey = preg_replace('/\s+/', '', $matches[1]);
             $output[] = "-----BEGIN RSA PRIVATE KEY-----";
-            $output[] = chunk_split($privateKey, 64, "\n");
+            $output[] = rtrim(chunk_split($privateKey, 64, "\n"), "\n");
             $output[] = "-----END RSA PRIVATE KEY-----";
             $privateKeyExtracted = true;
         }
@@ -735,7 +735,7 @@ class GreenterService
         if (preg_match('/-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----/s', $cleanedPem, $matches)) {
             $certificate = preg_replace('/\s+/', '', $matches[1]);
             $output[] = "-----BEGIN CERTIFICATE-----";
-            $output[] = chunk_split($certificate, 64, "\n");
+            $output[] = rtrim(chunk_split($certificate, 64, "\n"), "\n");
             $output[] = "-----END CERTIFICATE-----";
         }
         
