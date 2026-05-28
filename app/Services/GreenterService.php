@@ -99,60 +99,65 @@ class GreenterService
      */
     protected function initializeSeeApi()
     {
-        // Usar configuraciones de la base de datos para GRE
-        $guideConfig = $this->company->getSunatServiceConfig('guias_remision');
-        $endpoint = $guideConfig['api_endpoint'] ?? $this->company->getGuideApiEndpoint();
-        
-        $api = new \Greenter\Api([
-            'auth' => $endpoint,
-            'cpe' => $endpoint,
-        ]);
-        
-        // Configurar certificado
         try {
-            $certificadoPath = storage_path('app/public/certificado/certificado.pem');
+            // Usar configuraciones de la base de datos para GRE
+            $guideConfig = $this->company->getSunatServiceConfig('guias_remision');
+            $endpoint = $guideConfig['api_endpoint'] ?? $this->company->getGuideApiEndpoint();
             
-            if (!file_exists($certificadoPath)) {
-                throw new Exception("Archivo de certificado no encontrado para GRE: " . $certificadoPath);
+            $api = new \Greenter\Api([
+                'auth' => $endpoint,
+                'cpe' => $endpoint,
+            ]);
+            
+            // Configurar certificado
+            try {
+                $certificadoPath = storage_path('app/public/certificado/certificado.pem');
+                
+                if (!file_exists($certificadoPath)) {
+                    throw new Exception("Archivo de certificado no encontrado para GRE: " . $certificadoPath);
+                }
+                
+                $certificadoContent = file_get_contents($certificadoPath);
+                
+                if ($certificadoContent === false) {
+                    throw new Exception("No se pudo leer el archivo de certificado para GRE");
+                }
+                
+                $api->setCertificate($certificadoContent);
+                Log::info("Certificado GRE cargado desde archivo: " . $certificadoPath);
+            } catch (Exception $e) {
+                Log::error("Error al configurar certificado para GRE: " . $e->getMessage());
+                throw new Exception("Error al configurar certificado para GRE: " . $e->getMessage());
             }
             
-            $certificadoContent = file_get_contents($certificadoPath);
-            
-            if ($certificadoContent === false) {
-                throw new Exception("No se pudo leer el archivo de certificado para GRE");
+            // Configurar credenciales SOL para API GRE
+            try {
+                $solUser = $this->company->ruc . $this->company->usuario_sol;
+                
+                // Verificar si el método setCredentials existe
+                if (method_exists($api, 'setCredentials')) {
+                    $api->setCredentials($solUser, $this->company->clave_sol);
+                } else {
+                    // Método alternativo para configurar credenciales
+                    $api->setClaveSOL($this->company->ruc, $this->company->usuario_sol, $this->company->clave_sol);
+                }
+                
+            } catch (Exception $e) {
+                Log::warning("No se pudieron configurar credenciales para GRE API: " . $e->getMessage());
+                // Continúa sin error fatal para permitir facturas normales
             }
             
-            $api->setCertificate($certificadoContent);
-            Log::info("Certificado GRE cargado desde archivo: " . $certificadoPath);
+            Log::info("API de GRE configurada", [
+                'endpoint' => $endpoint,
+                'modo' => $this->company->modo_produccion ? 'PRODUCCIÓN' : 'BETA',
+                'ruc' => $this->company->ruc
+            ]);
+            
+            return $api;
         } catch (Exception $e) {
-            Log::error("Error al configurar certificado para GRE: " . $e->getMessage());
-            throw new Exception("Error al configurar certificado para GRE: " . $e->getMessage());
+            Log::warning("No se pudo inicializar la API de Guías de Remisión (GRE): " . $e->getMessage());
+            return null;
         }
-        
-        // Configurar credenciales SOL para API GRE
-        try {
-            $solUser = $this->company->ruc . $this->company->usuario_sol;
-            
-            // Verificar si el método setCredentials existe
-            if (method_exists($api, 'setCredentials')) {
-                $api->setCredentials($solUser, $this->company->clave_sol);
-            } else {
-                // Método alternativo para configurar credenciales
-                $api->setClaveSOL($this->company->ruc, $this->company->usuario_sol, $this->company->clave_sol);
-            }
-            
-        } catch (Exception $e) {
-            Log::warning("No se pudieron configurar credenciales para GRE API: " . $e->getMessage());
-            // Continúa sin error fatal para permitir facturas normales
-        }
-        
-        Log::info("API de GRE configurada", [
-            'endpoint' => $endpoint,
-            'modo' => $this->company->modo_produccion ? 'PRODUCCIÓN' : 'BETA',
-            'ruc' => $this->company->ruc
-        ]);
-        
-        return $api;
     }
 
     public function getGreenterCompany(): GreenterCompany
