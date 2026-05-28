@@ -56,25 +56,19 @@ class GreenterService
         
         $see->setService($endpoint);
         
-        // Configurar certificado cargando desde archivo
+        // Configurar certificado directamente
         try {
-            $certificadoPath = storage_path('app/public/certificado/certificado.pem');
+            $certificadoContent = $this->company->certificado_pem;
             
-            if (!file_exists($certificadoPath)) {
-                throw new Exception("Archivo de certificado no encontrado: " . $certificadoPath);
-            }
-            
-            $certificadoContent = file_get_contents($certificadoPath);
-            
-            if ($certificadoContent === false) {
-                throw new Exception("No se pudo leer el archivo de certificado");
+            if (empty($certificadoContent)) {
+                throw new Exception("El contenido del certificado PEM está vacío en la base de datos.");
             }
             
             // Clean the certificate PEM format for OpenSSL
             $certificadoContent = $this->prepareCertificate($certificadoContent);
             
             $see->setCertificate($certificadoContent);
-            Log::info("Certificado cargado y limpiado desde archivo: " . $certificadoPath);
+            Log::info("Certificado cargado y limpiado directamente desde la base de datos.");
         } catch (Exception $e) {
             Log::error("Error al configurar certificado: " . $e->getMessage());
             throw new Exception("Error al configurar certificado: " . $e->getMessage());
@@ -114,20 +108,15 @@ class GreenterService
             
             // Configurar certificado
             try {
-                $certificadoPath = storage_path('app/public/certificado/certificado.pem');
+                $certificadoContent = $this->company->certificado_pem;
                 
-                if (!file_exists($certificadoPath)) {
-                    throw new Exception("Archivo de certificado no encontrado para GRE: " . $certificadoPath);
+                if (empty($certificadoContent)) {
+                    throw new Exception("El contenido del certificado PEM está vacío en la base de datos.");
                 }
                 
-                $certificadoContent = file_get_contents($certificadoPath);
-                
-                if ($certificadoContent === false) {
-                    throw new Exception("No se pudo leer el archivo de certificado para GRE");
-                }
-                
+                $certificadoContent = $this->prepareCertificate($certificadoContent);
                 $api->setCertificate($certificadoContent);
-                Log::info("Certificado GRE cargado desde archivo: " . $certificadoPath);
+                Log::info("Certificado GRE cargado y limpiado directamente desde la base de datos.");
             } catch (Exception $e) {
                 Log::error("Error al configurar certificado para GRE: " . $e->getMessage());
                 throw new Exception("Error al configurar certificado para GRE: " . $e->getMessage());
