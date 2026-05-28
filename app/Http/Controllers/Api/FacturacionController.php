@@ -291,17 +291,28 @@ class FacturacionController extends Controller
                     'updated_at' => now()
                 ]);
             
-            // Enviar respuesta exitosa de inmediato para liberar al cajero
-            $response = response()->json([
-                'success' => true,
-                'comprobante' => $numeroCompleto,
-                'message' => 'Comprobante firmado y registrado localmente. Enviando a SUNAT en segundo plano...'
-            ]);
-            $response->send();
+            // Si solo se pidió firmar, retornar de inmediato (<50ms)
+            if ($request->input('solo_firmar') || $request->query('solo_firmar')) {
+                return response()->json([
+                    'success' => true,
+                    'comprobante' => $numeroCompleto,
+                    'message' => 'Comprobante firmado y registrado localmente.'
+                ]);
+            }
             
-            // Finalizar la conexión HTTP con el cliente para que continúe sin demora
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
+            // Enviar respuesta exitosa de inmediato para liberar al cajero (si no es solo_enviar directo)
+            if (!$request->input('solo_enviar') && !$request->query('solo_enviar')) {
+                $response = response()->json([
+                    'success' => true,
+                    'comprobante' => $numeroCompleto,
+                    'message' => 'Comprobante firmado y registrado localmente. Enviando a SUNAT en segundo plano...'
+                ]);
+                $response->send();
+                
+                // Finalizar la conexión HTTP con el cliente para que continúe sin demora
+                if (function_exists('fastcgi_finish_request')) {
+                    fastcgi_finish_request();
+                }
             }
             
             // --- CÓDIGO EN SEGUNDO PLANO (TRANSMISIÓN A SUNAT) ---
@@ -357,6 +368,22 @@ class FacturacionController extends Controller
                         'sunat_mensaje' => 'Error de transmisión: ' . $bgEx->getMessage(),
                         'updated_at' => now()
                     ]);
+                
+                if ($request->input('solo_enviar') || $request->query('solo_enviar')) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Error de transmisión: ' . $bgEx->getMessage()
+                    ], 500);
+                }
+            }
+            
+            if ($request->input('solo_enviar') || $request->query('solo_enviar')) {
+                return response()->json([
+                    'success' => isset($sunatEstado) && $sunatEstado === 'enviado',
+                    'comprobante' => $numeroCompleto,
+                    'estado' => $sunatEstado ?? 'error',
+                    'mensaje' => $sunatMensaje ?? ''
+                ]);
             }
             
             return;
@@ -500,4 +527,250 @@ class FacturacionController extends Controller
         
         return Storage::disk('public')->download($path, $filename);
     }
+
+    public function enviarResumenDiario(Request $request)
+    {
+        $request->validate([
+            'empresa_id' => 'required|string',
+        ]);
+        
+        $empresaId = $request->input('empresa_id');
+        
+        try {
+            $empresa = DB::table('empresas')->where('id', $empresaId)->first();
+            if (!$empresa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Empresa no encontrada.'
+                ], 404);
+            }
+            
+            // Si la empresa es de facturación interna (solo nota de venta), omitir
+            if (isset($empresa->solo_nota_venta) && $empresa->solo_nota_venta) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'La empresa está configurada para Facturación Interna (solo nota de venta). No se requiere envío a SUNAT.'
+                ]);
+            }
+            
+            // Obtener boletas en estado pendiente o error
+            $boletas = DB::table('ordenes')
+                ->where('empresa_id', $empresaId)
+                ->where('tipo_comprobante', 'boleta')
+                ->whereIn('sunat_estado', ['pendiente', 'error'])
+                ->get();
+                
+            if ($boletas->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No hay boletas pendientes para enviar a SUNAT.'
+                ]);
+            }
+            
+            // SUNAT exige agrupar los resúmenes diarios por la fecha de emisión del comprobante
+            $boletasByDate = [];
+            foreach ($boletas as $boleta) {
+                $dateKey = date('Y-m-d', strtotime($boleta->created_at));
+                $boletasByDate[$dateKey][] = $boleta;
+            }
+            
+            // Configuración general de la empresa
+            $config = json_decode($empresa->configuracion, true) ?: [];
+            $porcentajeIgv = isset($config['igv']) ? (float)$config['igv'] : 18.00;
+            
+            $company = new SunatCompany();
+            $company->ruc = $empresa->ruc ?: '20000000001';
+            $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
+            $company->nombre_comercial = $empresa->nombre;
+            $company->direccion = $empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N';
+            $company->ubigeo = $empresa->ubigeo ?: '150101';
+            $company->departamento = $empresa->departamento ?: 'LIMA';
+            $company->provincia = $empresa->provincia ?: 'LIMA';
+            $company->distrito = $empresa->distrito ?: 'LIMA';
+            $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
+            $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
+            $company->certificado_pem = $empresa->sunat_certificado_pem;
+            $company->certificado_password = $empresa->sunat_certificado_password;
+            $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
+            
+            if ($company->certificado_pem) {
+                $certPath = storage_path('app/public/certificado/certificado.pem');
+                if (!file_exists(dirname($certPath))) {
+                    mkdir(dirname($certPath), 0755, true);
+                }
+                file_put_contents($certPath, $company->certificado_pem);
+            }
+            
+            $greenterService = new GreenterService($company);
+            $summariesSent = [];
+            
+            foreach ($boletasByDate as $emissionDate => $dateBoletas) {
+                $todayStr = date('Ymd');
+                
+                // Encontrar el correlativo para el día
+                $lastMessage = DB::table('ordenes')
+                    ->where('empresa_id', $empresaId)
+                    ->where('tipo_comprobante', 'boleta')
+                    ->where('sunat_mensaje', 'like', "%RC-{$todayStr}-%")
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                    
+                $correlativoInt = 1;
+                if ($lastMessage) {
+                    preg_match("/RC-{$todayStr}-(\d+)/", $lastMessage->sunat_mensaje, $matches);
+                    if (isset($matches[1])) {
+                        $correlativoInt = intval($matches[1]) + 1;
+                    }
+                }
+                
+                $correlativoStr = str_pad($correlativoInt, 3, '0', STR_PAD_LEFT);
+                $summaryIdentifier = "RC-{$todayStr}-{$correlativoStr}";
+                
+                $detalles = [];
+                foreach ($dateBoletas as $boleta) {
+                    $clientDoc = '00000000';
+                    if ($boleta->cliente_id) {
+                        $cliente = DB::table('clientes')->where('id', $boleta->cliente_id)->first();
+                        if ($cliente) {
+                            $clientDoc = $cliente->dni ?: '00000000';
+                        }
+                    }
+                    
+                    $clientDocType = '0';
+                    if (strlen($clientDoc) === 8) {
+                        $clientDocType = '1';
+                    } elseif (strlen($clientDoc) === 11) {
+                        $clientDocType = '6';
+                    }
+                    
+                    $total = (float)$boleta->total;
+                    $igv = (float)($boleta->igv_monto ?? 0);
+                    
+                    if ($porcentajeIgv > 0) {
+                        if ($igv > 0) {
+                            $gravado = round($total - $igv, 2);
+                        } else {
+                            $gravado = round($total / (1 + ($porcentajeIgv / 100)), 2);
+                            $igv = round($total - $gravado, 2);
+                        }
+                        $exonerado = 0.00;
+                    } else {
+                        $gravado = 0.00;
+                        $exonerado = $total;
+                        $igv = 0.00;
+                    }
+                    
+                    $detalles[] = [
+                        'tipo_documento' => '03',
+                        'serie_numero' => $boleta->comprobante_serie . '-' . str_pad($boleta->comprobante_numero, 8, '0', STR_PAD_LEFT),
+                        'estado' => '1', // 1 = ADICION
+                        'cliente_tipo' => $clientDocType,
+                        'cliente_numero' => $clientDoc,
+                        'total' => $total,
+                        'mto_oper_gravadas' => $gravado,
+                        'mto_oper_exoneradas' => $exonerado,
+                        'mto_oper_inafectas' => 0.00,
+                        'mto_igv' => $igv
+                    ];
+                }
+                
+                $summaryData = [
+                    'fecha_resumen' => date('Y-m-d'), // Fecha de generación
+                    'fecha_generacion' => $emissionDate, // Fecha de referencia
+                    'correlativo' => $correlativoStr,
+                    'detalles' => $detalles
+                ];
+                
+                $greenterSummary = $greenterService->createSummary($summaryData);
+                if (!$greenterSummary) {
+                    continue;
+                }
+                
+                $result = $greenterService->sendSummaryDocument($greenterSummary);
+                
+                if ($result['success'] && $result['ticket']) {
+                    $ticket = $result['ticket'];
+                    $xmlSigned = $result['xml'];
+                    $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned ?: '');
+                    
+                    $sunatEstado = 'pendiente';
+                    $sunatMensaje = "Resumen {$summaryIdentifier} registrado. Ticket: {$ticket}";
+                    $cdrBase64 = null;
+                    
+                    // Hacer un pequeño sondeo (polling) para recuperar el CDR final
+                    for ($p = 0; $p < 4; $p++) {
+                        sleep(2);
+                        $statusResult = $greenterService->checkSummaryStatus($ticket);
+                        if ($statusResult['success']) {
+                            $sunatEstado = 'enviado';
+                            $sunatMensaje = "Resumen {$summaryIdentifier} aceptado.";
+                            if ($statusResult['cdr_response']) {
+                                $sunatMensaje = $statusResult['cdr_response']->getDescription();
+                            }
+                            if ($statusResult['cdr_zip']) {
+                                $cdrBase64 = 'data:application/zip;base64,' . base64_encode($statusResult['cdr_zip']);
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $boletaIds = [];
+                    foreach ($dateBoletas as $b) {
+                        $boletaIds[] = $b->id;
+                    }
+                    
+                    DB::table('ordenes')
+                        ->whereIn('id', $boletaIds)
+                        ->update([
+                            'sunat_estado' => $sunatEstado,
+                            'sunat_mensaje' => $sunatMensaje,
+                            'sunat_xml_url' => $xmlBase64,
+                            'sunat_cdr_url' => $cdrBase64 ?: DB::raw('sunat_cdr_url'),
+                            'updated_at' => now()
+                        ]);
+                        
+                    $summariesSent[] = [
+                        'identifier' => $summaryIdentifier,
+                        'fecha_referencia' => $emissionDate,
+                        'ticket' => $ticket,
+                        'cantidad_boletas' => count($dateBoletas),
+                        'estado' => $sunatEstado,
+                        'mensaje' => $sunatMensaje
+                    ];
+                } else {
+                    $errorMsg = 'Error al enviar resumen: ';
+                    if (isset($result['error'])) {
+                        $errorMsg .= $result['error']->message ?? 'Error desconocido';
+                    }
+                    
+                    $boletaIds = [];
+                    foreach ($dateBoletas as $b) {
+                        $boletaIds[] = $b->id;
+                    }
+                    
+                    DB::table('ordenes')
+                        ->whereIn('id', $boletaIds)
+                        ->update([
+                            'sunat_estado' => 'error',
+                            'sunat_mensaje' => $errorMsg,
+                            'updated_at' => now()
+                        ]);
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Procesamiento de resúmenes diarios completado.',
+                'summaries' => $summariesSent
+            ]);
+            
+        } catch (Exception $e) {
+            Log::error('Error al generar resumen diario de boletas: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de procesamiento: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
+
