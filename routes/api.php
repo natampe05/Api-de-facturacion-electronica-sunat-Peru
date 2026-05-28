@@ -57,10 +57,25 @@ Route::get('/test-cert', function() {
         $pem = $empresa->sunat_certificado_pem;
         if (!$pem) return ['error' => 'Certificate pem is null'];
         
+        $certificadoLimpio = trim($pem);
+        $certificadoLimpio = str_replace(["\r\n", "\r"], "\n", $certificadoLimpio);
+        $lines = explode("\n", $certificadoLimpio);
+        $lines = array_map('trim', $lines);
+        $certificadoLimpio = implode("\n", $lines);
+        
+        $hasPrivateKey = strpos($certificadoLimpio, '-----BEGIN PRIVATE KEY-----') !== false && 
+                        strpos($certificadoLimpio, '-----END PRIVATE KEY-----') !== false;
+        
+        $hasCertificate = strpos($certificadoLimpio, '-----BEGIN CERTIFICATE-----') !== false && 
+                         strpos($certificadoLimpio, '-----END CERTIFICATE-----') !== false;
+        
+        $hasRsaPrivateKey = strpos($certificadoLimpio, '-----BEGIN RSA PRIVATE KEY-----') !== false && 
+                           strpos($certificadoLimpio, '-----END RSA PRIVATE KEY-----') !== false;
+                           
         return [
-            'raw_pem_prefix' => substr($pem, 0, 300),
-            'raw_pem_suffix' => substr($pem, -300),
-            'pem_length' => strlen($pem),
+            'has_private_key' => $hasPrivateKey,
+            'has_certificate' => $hasCertificate,
+            'has_rsa_private_key' => $hasRsaPrivateKey,
         ];
     } catch (\Exception $e) {
         return ['error' => $e->getMessage()];
