@@ -433,6 +433,7 @@ class FacturacionController extends Controller
             }
                                
             return response()->json([
+                'openssl_version' => OPENSSL_VERSION_TEXT,
                 'has_private_key' => $hasPrivateKey,
                 'has_certificate' => $hasCertificate,
                 'has_rsa_private_key' => $hasRsaPrivateKey,
