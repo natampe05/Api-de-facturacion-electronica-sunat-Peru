@@ -106,13 +106,13 @@ Route::get('/test-cert', function() {
             if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
                 $privateKey = preg_replace('/\s+/', '', $matches[1]);
                 $output[] = "-----BEGIN PRIVATE KEY-----";
-                $output[] = chunk_split($privateKey, 64, "\n");
+                $output[] = rtrim(chunk_split($privateKey, 64, "\n"), "\n");
                 $output[] = "-----END PRIVATE KEY-----";
             }
             if (preg_match('/-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----/s', $cleanedPem, $matches)) {
                 $certificate = preg_replace('/\s+/', '', $matches[1]);
                 $output[] = "-----BEGIN CERTIFICATE-----";
-                $output[] = chunk_split($certificate, 64, "\n");
+                $output[] = rtrim(chunk_split($certificate, 64, "\n"), "\n");
                 $output[] = "-----END CERTIFICATE-----";
             }
             $reconstructedPem = implode("\n", $output);
@@ -124,7 +124,7 @@ Route::get('/test-cert', function() {
             if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
                 $privateKey = preg_replace('/\s+/', '', $matches[1]);
                 $outputPriv[] = "-----BEGIN PRIVATE KEY-----";
-                $outputPriv[] = chunk_split($privateKey, 64, "\n");
+                $outputPriv[] = rtrim(chunk_split($privateKey, 64, "\n"), "\n");
                 $outputPriv[] = "-----END PRIVATE KEY-----";
             }
             $onlyPrivateKeyPem = implode("\n", $outputPriv);
