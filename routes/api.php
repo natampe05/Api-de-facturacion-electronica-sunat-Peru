@@ -57,6 +57,7 @@ Route::get('/test-cert', function() {
         $pem = $empresa->sunat_certificado_pem;
         if (!$pem) return ['error' => 'Certificate pem is null'];
         
+        $pem = str_replace(['\r\n', '\r', '\n', '\\n', '\\r'], "\n", $pem);
         $certificadoLimpio = trim($pem);
         $certificadoLimpio = str_replace(["\r\n", "\r"], "\n", $certificadoLimpio);
         $lines = explode("\n", $certificadoLimpio);
