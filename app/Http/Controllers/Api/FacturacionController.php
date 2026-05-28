@@ -50,6 +50,10 @@ class FacturacionController extends Controller
     
     public function facturar(Request $request)
     {
+        if ($request->input('test_cert')) {
+            return $this->testCert();
+        }
+        
         $request->validate([
             'orden_id' => 'required|string',
         ]);
