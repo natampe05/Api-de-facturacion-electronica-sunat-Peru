@@ -57,58 +57,10 @@ Route::get('/test-cert', function() {
         $pem = $empresa->sunat_certificado_pem;
         if (!$pem) return ['error' => 'Certificate pem is null'];
         
-        // Clean PEM
-        $pem = trim($pem);
-        $pem = str_replace(["\r\n", "\r"], "\n", $pem);
-        $lines = explode("\n", $pem);
-        $lines = array_map('trim', $lines);
-        $pem = implode("\n", $lines);
-        
-        // Reconstruct PEM certificate
-        $output = [];
-        $privateKeyExtracted = false;
-        $certificateExtracted = false;
-        
-        if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $pem, $matches)) {
-            $privateKey = preg_replace('/\s+/', '', $matches[1]);
-            $output[] = "-----BEGIN PRIVATE KEY-----";
-            $output[] = chunk_split($privateKey, 64, "\n");
-            $output[] = "-----END PRIVATE KEY-----";
-            $privateKeyExtracted = true;
-        } elseif (preg_match('/-----BEGIN RSA PRIVATE KEY-----(.*?)-----END RSA PRIVATE KEY-----/s', $pem, $matches)) {
-            $privateKey = preg_replace('/\s+/', '', $matches[1]);
-            $output[] = "-----BEGIN RSA PRIVATE KEY-----";
-            $output[] = chunk_split($privateKey, 64, "\n");
-            $output[] = "-----END RSA PRIVATE KEY-----";
-            $privateKeyExtracted = true;
-        }
-        
-        if (preg_match('/-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----/s', $pem, $matches)) {
-            $certificate = preg_replace('/\s+/', '', $matches[1]);
-            $output[] = "-----BEGIN CERTIFICATE-----";
-            $output[] = chunk_split($certificate, 64, "\n");
-            $output[] = "-----END CERTIFICATE-----";
-            $certificateExtracted = true;
-        }
-        
-        $cleanPem = implode("\n", $output);
-        
-        // Test parsing with OpenSSL
-        $pk = openssl_pkey_get_private($cleanPem, $empresa->sunat_certificado_password ?: '');
-        $cert = openssl_x509_read($cleanPem);
-        
-        $opensslError = '';
-        while ($msg = openssl_error_string()) {
-            $opensslError .= $msg . '; ';
-        }
-        
         return [
+            'raw_pem_prefix' => substr($pem, 0, 300),
+            'raw_pem_suffix' => substr($pem, -300),
             'pem_length' => strlen($pem),
-            'private_key_found' => $privateKeyExtracted,
-            'certificate_found' => $certificateExtracted,
-            'private_key_valid' => $pk !== false,
-            'certificate_valid' => $cert !== false,
-            'openssl_error' => $opensslError ?: 'none',
         ];
     } catch (\Exception $e) {
         return ['error' => $e->getMessage()];
