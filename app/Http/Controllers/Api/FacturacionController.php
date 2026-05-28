@@ -255,71 +255,111 @@ class FacturacionController extends Controller
                 throw new Exception('No se pudo crear el documento para Greenter.');
             }
             
-            // Enviar a SUNAT
-            $result = $greenterService->sendDocument($greenterDocument);
+            // Firmar el XML localmente y extraer el hash (operación rápida local de microsegundos)
+            $xmlSigned = $greenterService->getXmlSigned($greenterDocument);
+            $sunatHash = null;
+            if ($xmlSigned) {
+                $sunatHash = $this->extractHashFromXml($xmlSigned);
+            }
             
-            // 8. Crear un documento virtual para FileService
+            // Generar Base64 data URL del XML preliminar firmado
+            $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned ?: '');
+            
+            // Guardar en almacenamiento local (fallback)
             $docObj = new SunatDocument();
             $docObj->fecha_emision = $orden->created_at;
             $docObj->numero_completo = $numeroCompleto;
             $docObj->tipo_documento = $orden->tipo_comprobante === 'factura' ? '01' : '03';
             
-            // Extraer el hash del XML firmado y guardar el archivo
-            $sunatHash = null;
-            $xmlSigned = $greenterService->getXmlSigned($greenterDocument);
             if ($xmlSigned) {
-                $sunatHash = $this->extractHashFromXml($xmlSigned);
-                $xmlPath = $this->fileService->saveXml($docObj, $xmlSigned);
-            } elseif ($result['xml']) {
-                $xmlPath = $this->fileService->saveXml($docObj, $result['xml']);
+                try {
+                    $this->fileService->saveXml($docObj, $xmlSigned);
+                } catch (Exception $e) {
+                    Log::warning('No se pudo guardar XML firmado en disco local: ' . $e->getMessage());
+                }
             }
             
-            if ($result['success'] && $result['cdr_zip']) {
-                $cdrPath = $this->fileService->saveCdr($docObj, $result['cdr_zip']);
-            }
-            
-            // Generar Base64 data URLs para persistencia en Supabase (evita 404 en nubes sin estado)
-            $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned ?: $result['xml'] ?: '');
-            $cdrBase64 = $result['cdr_zip'] ? ('data:application/zip;base64,' . base64_encode($result['cdr_zip'])) : null;
-            
-            // Determinar estados y mensajes
-            $sunatEstado = $result['success'] ? 'enviado' : 'error';
-            $sunatMensaje = '';
-            
-            if ($result['success'] && $result['cdr_response']) {
-                $sunatMensaje = $result['cdr_response']->getDescription();
-            } elseif ($result['error']) {
-                $sunatMensaje = $result['error']->message ?? 'Error SUNAT desconocido';
-            }
-            
-            // Actualizar la tabla 'ordenes' en Supabase
+            // Actualizar la orden localmente de inmediato con los datos firmados
             DB::table('ordenes')
                 ->where('id', $ordenId)
                 ->update([
-                    'tipo_comprobante' => $orden->tipo_comprobante,
                     'comprobante_serie' => $serie,
                     'comprobante_numero' => $numero,
-                    'sunat_estado' => $sunatEstado,
+                    'sunat_estado' => 'pendiente', // Cambiará a 'enviado' o 'error' en segundo plano
                     'sunat_hash' => $sunatHash,
-                    'sunat_mensaje' => $sunatMensaje,
                     'sunat_xml_url' => $xmlBase64,
-                    'sunat_cdr_url' => $cdrBase64,
                     'updated_at' => now()
                 ]);
-                
-            if ($result['success']) {
-                return response()->json([
-                    'success' => true,
-                    'comprobante' => $numeroCompleto,
-                    'message' => 'Comprobante emitido y enviado correctamente.'
-                ]);
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'comprobante' => $numeroCompleto,
-                    'message' => 'Error SUNAT: ' . $sunatMensaje
-                ], 400);
+            
+            // Enviar respuesta exitosa de inmediato para liberar al cajero
+            $response = response()->json([
+                'success' => true,
+                'comprobante' => $numeroCompleto,
+                'message' => 'Comprobante firmado y registrado localmente. Enviando a SUNAT en segundo plano...'
+            ]);
+            $response->send();
+            
+            // Finalizar la conexión HTTP con el cliente para que continúe sin demora
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
             }
+            
+            // --- CÓDIGO EN SEGUNDO PLANO (TRANSMISIÓN A SUNAT) ---
+            try {
+                // Enviar a SUNAT (esta llamada de red tarda varios segundos)
+                $result = $greenterService->sendDocument($greenterDocument);
+                
+                // Si el envío retornó un XML firmado alternativo, lo actualizamos
+                if (!$xmlSigned && $result['xml']) {
+                    $xmlSigned = $result['xml'];
+                    $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned);
+                    $sunatHash = $this->extractHashFromXml($xmlSigned);
+                }
+                
+                // Guardar el CDR si tuvo éxito
+                $cdrBase64 = null;
+                if ($result['success'] && $result['cdr_zip']) {
+                    try {
+                        $this->fileService->saveCdr($docObj, $result['cdr_zip']);
+                    } catch (Exception $e) {
+                        Log::warning('No se pudo guardar CDR en disco local: ' . $e->getMessage());
+                    }
+                    $cdrBase64 = 'data:application/zip;base64,' . base64_encode($result['cdr_zip']);
+                }
+                
+                $sunatEstado = $result['success'] ? 'enviado' : 'error';
+                $sunatMensaje = '';
+                
+                if ($result['success'] && $result['cdr_response']) {
+                    $sunatMensaje = $result['cdr_response']->getDescription();
+                } elseif ($result['error']) {
+                    $sunatMensaje = $result['error']->message ?? 'Error SUNAT desconocido';
+                }
+                
+                // Actualizar el estado final en Supabase
+                DB::table('ordenes')
+                    ->where('id', $ordenId)
+                    ->update([
+                        'sunat_estado' => $sunatEstado,
+                        'sunat_hash' => $sunatHash,
+                        'sunat_mensaje' => $sunatMensaje,
+                        'sunat_xml_url' => $xmlBase64,
+                        'sunat_cdr_url' => $cdrBase64,
+                        'updated_at' => now()
+                    ]);
+                    
+            } catch (Exception $bgEx) {
+                Log::error('Error en segundo plano al enviar a SUNAT la orden ' . $ordenId . ': ' . $bgEx->getMessage());
+                DB::table('ordenes')
+                    ->where('id', $ordenId)
+                    ->update([
+                        'sunat_estado' => 'error',
+                        'sunat_mensaje' => 'Error de transmisión: ' . $bgEx->getMessage(),
+                        'updated_at' => now()
+                    ]);
+            }
+            
+            return;
             
         } catch (Exception $e) {
             Log::error('Error al facturar orden ' . $ordenId . ': ' . $e->getMessage());
