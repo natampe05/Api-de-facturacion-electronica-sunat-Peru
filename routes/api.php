@@ -22,6 +22,23 @@ use App\Http\Controllers\Api\FacturacionController;
 
 // Facturación electrónica SUNAT
 Route::post('/facturar', [FacturacionController::class, 'facturar']);
+Route::get('/comprobantes/{id}/xml', [FacturacionController::class, 'downloadXmlPublic']);
+Route::get('/comprobantes/{id}/cdr', [FacturacionController::class, 'downloadCdrPublic']);
+Route::get('/run-storage-link', function() {
+    try {
+        $output = \Illuminate\Support\Facades\Artisan::call('storage:link');
+        return response()->json([
+            'success' => true,
+            'message' => 'Artisan storage:link ejecutado con éxito.',
+            'output' => $output
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+});
 
 // Información del sistema
 Route::get('/system/info', [AuthController::class, 'systemInfo']);

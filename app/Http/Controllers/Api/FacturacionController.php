@@ -9,6 +9,7 @@ use App\Services\FileService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Exception;
 
 class SunatCompany extends Company
@@ -124,6 +125,15 @@ class FacturacionController extends Controller
             }
             
             $numeroCompleto = $serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT);
+
+            // Actualizar la orden de inmediato en la base de datos con la serie y número
+            DB::table('ordenes')
+                ->where('id', $ordenId)
+                ->update([
+                    'comprobante_serie' => $serie,
+                    'comprobante_numero' => $numero,
+                    'updated_at' => now()
+                ]);
             
             // 5. Instanciar y configurar la empresa virtual para Greenter
             $company = new SunatCompany();
@@ -151,6 +161,9 @@ class FacturacionController extends Controller
             }
             
             // 6. Mapear items
+            $config = json_decode($empresa->configuracion, true) ?: [];
+            $porcentajeIgv = isset($config['igv']) ? (float)$config['igv'] : 18.00;
+
             $itemsRaw = is_string($orden->items) ? json_decode($orden->items, true) : (array)$orden->items;
             $detalles = [];
             $valorVenta = 0;
@@ -159,13 +172,22 @@ class FacturacionController extends Controller
             foreach ($itemsRaw as $index => $item) {
                 $precioConIgv = (float)($item['precio'] ?? ($item['subtotal'] / ($item['cantidad'] ?: 1)));
                 $cantidad = (float)($item['cantidad'] ?: 1);
-                $porcentajeIgv = 18.00;
                 
-                $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
-                $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
-                $igv = round($mtoValorVenta * ($porcentajeIgv / 100), 2);
-                $totalImpuestos = $igv;
-                $mtoPrecioUnitario = round(($mtoValorVenta + $igv) / $cantidad, 2);
+                if ($porcentajeIgv > 0) {
+                    $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
+                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
+                    $igv = round($mtoValorVenta * ($porcentajeIgv / 100), 2);
+                    $totalImpuestos = $igv;
+                    $mtoPrecioUnitario = round(($mtoValorVenta + $igv) / $cantidad, 2);
+                    $tipAfeIgv = '10'; // Gravado - Operación Onerosa
+                } else {
+                    $mtoValorUnitario = round($precioConIgv, 4);
+                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
+                    $igv = 0.00;
+                    $totalImpuestos = 0.00;
+                    $mtoPrecioUnitario = round($precioConIgv, 2);
+                    $tipAfeIgv = '20'; // Exonerado - Operación Onerosa
+                }
                 
                 $valorVenta += $mtoValorVenta;
                 $mtoIgv += $igv;
@@ -180,7 +202,7 @@ class FacturacionController extends Controller
                     'mto_base_igv' => $mtoValorVenta,
                     'porcentaje_igv' => $porcentajeIgv,
                     'igv' => $igv,
-                    'tip_afe_igv' => '10',
+                    'tip_afe_igv' => $tipAfeIgv,
                     'total_impuestos' => $totalImpuestos,
                     'mto_precio_unitario' => $mtoPrecioUnitario
                 ];
@@ -242,10 +264,13 @@ class FacturacionController extends Controller
             $docObj->numero_completo = $numeroCompleto;
             $docObj->tipo_documento = $orden->tipo_comprobante === 'factura' ? '01' : '03';
             
-            $xmlPath = null;
-            $cdrPath = null;
-            
-            if ($result['xml']) {
+            // Extraer el hash del XML firmado y guardar el archivo
+            $sunatHash = null;
+            $xmlSigned = $greenterService->getXmlSigned($greenterDocument);
+            if ($xmlSigned) {
+                $sunatHash = $this->extractHashFromXml($xmlSigned);
+                $xmlPath = $this->fileService->saveXml($docObj, $xmlSigned);
+            } elseif ($result['xml']) {
                 $xmlPath = $this->fileService->saveXml($docObj, $result['xml']);
             }
             
@@ -253,12 +278,9 @@ class FacturacionController extends Controller
                 $cdrPath = $this->fileService->saveCdr($docObj, $result['cdr_zip']);
             }
             
-            // Extraer el hash del XML firmado
-            $sunatHash = null;
-            $xmlSigned = $greenterService->getXmlSigned($greenterDocument);
-            if ($xmlSigned) {
-                $sunatHash = $this->extractHashFromXml($xmlSigned);
-            }
+            // Generar Base64 data URLs para persistencia en Supabase (evita 404 en nubes sin estado)
+            $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned ?: $result['xml'] ?: '');
+            $cdrBase64 = $result['cdr_zip'] ? ('data:application/zip;base64,' . base64_encode($result['cdr_zip'])) : null;
             
             // Determinar estados y mensajes
             $sunatEstado = $result['success'] ? 'enviado' : 'error';
@@ -280,8 +302,8 @@ class FacturacionController extends Controller
                     'sunat_estado' => $sunatEstado,
                     'sunat_hash' => $sunatHash,
                     'sunat_mensaje' => $sunatMensaje,
-                    'sunat_xml_url' => $xmlPath ? url('/storage/' . $xmlPath) : null,
-                    'sunat_cdr_url' => $cdrPath ? url('/storage/' . $cdrPath) : null,
+                    'sunat_xml_url' => $xmlBase64,
+                    'sunat_cdr_url' => $cdrBase64,
                     'updated_at' => now()
                 ]);
                 
@@ -373,5 +395,69 @@ class FacturacionController extends Controller
         return 'NÚMERO EN LETRAS';
     }
 
+    public function downloadXmlPublic($id)
+    {
+        $orden = DB::table('ordenes')->where('id', $id)->first();
+        if (!$orden || !$orden->sunat_xml_url) {
+            abort(404, 'XML no encontrado para esta orden.');
+        }
+        
+        $filename = ($orden->comprobante_serie ?: 'DOC') . '-' . str_pad($orden->comprobante_numero ?: 1, 8, '0', STR_PAD_LEFT) . '.xml';
+        
+        if (str_starts_with($orden->sunat_xml_url, 'data:')) {
+            $pos = strpos($orden->sunat_xml_url, 'base64,');
+            if ($pos !== false) {
+                $content = base64_decode(substr($orden->sunat_xml_url, $pos + 7));
+                return response($content, 200, [
+                    'Content-Type' => 'application/xml',
+                    'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                ]);
+            }
+        }
+        
+        $urlParts = parse_url($orden->sunat_xml_url);
+        $path = ltrim($urlParts['path'] ?? '', '/');
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, 8);
+        }
+        
+        if (!Storage::disk('public')->exists($path)) {
+            abort(404, 'El archivo XML no existe en el almacenamiento.');
+        }
+        
+        return Storage::disk('public')->download($path, $filename);
+    }
 
+    public function downloadCdrPublic($id)
+    {
+        $orden = DB::table('ordenes')->where('id', $id)->first();
+        if (!$orden || !$orden->sunat_cdr_url) {
+            abort(404, 'CDR no encontrado para esta orden.');
+        }
+        
+        $filename = 'R-' . ($orden->comprobante_serie ?: 'DOC') . '-' . str_pad($orden->comprobante_numero ?: 1, 8, '0', STR_PAD_LEFT) . '.zip';
+        
+        if (str_starts_with($orden->sunat_cdr_url, 'data:')) {
+            $pos = strpos($orden->sunat_cdr_url, 'base64,');
+            if ($pos !== false) {
+                $content = base64_decode(substr($orden->sunat_cdr_url, $pos + 7));
+                return response($content, 200, [
+                    'Content-Type' => 'application/zip',
+                    'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                ]);
+            }
+        }
+        
+        $urlParts = parse_url($orden->sunat_cdr_url);
+        $path = ltrim($urlParts['path'] ?? '', '/');
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, 8);
+        }
+        
+        if (!Storage::disk('public')->exists($path)) {
+            abort(404, 'El archivo CDR no existe en el almacenamiento.');
+        }
+        
+        return Storage::disk('public')->download($path, $filename);
+    }
 }
