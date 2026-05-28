@@ -70,8 +70,11 @@ class GreenterService
                 throw new Exception("No se pudo leer el archivo de certificado");
             }
             
+            // Clean the certificate PEM format for OpenSSL
+            $certificadoContent = $this->prepareCertificate($certificadoContent);
+            
             $see->setCertificate($certificadoContent);
-            Log::info("Certificado cargado desde archivo: " . $certificadoPath);
+            Log::info("Certificado cargado y limpiado desde archivo: " . $certificadoPath);
         } catch (Exception $e) {
             Log::error("Error al configurar certificado: " . $e->getMessage());
             throw new Exception("Error al configurar certificado: " . $e->getMessage());
