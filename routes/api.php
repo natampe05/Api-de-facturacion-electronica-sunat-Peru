@@ -25,31 +25,7 @@ Route::post('/facturar', [FacturacionController::class, 'facturar']);
 
 // Información del sistema
 Route::get('/system/info', [AuthController::class, 'systemInfo']);
-Route::get('/debug-env', function() {
-    return [
-        'DB_CONNECTION' => env('DB_CONNECTION'),
-        'DB_HOST' => env('DB_HOST'),
-        'DB_PORT' => env('DB_PORT'),
-        'DB_DATABASE' => env('DB_DATABASE'),
-        'DB_USERNAME' => env('DB_USERNAME'),
-        'has_password' => !empty(env('DB_PASSWORD')),
-    ];
-});
-Route::get('/test-db', function() {
-    try {
-        $count = DB::table('empresas')->count();
-        return [
-            'success' => true,
-            'empresas_count' => $count,
-        ];
-    } catch (\Exception $e) {
-        return [
-            'success' => false,
-            'error' => $e->getMessage(),
-        ];
-    }
-});
-Route::get('/test-cert', [FacturacionController::class, 'testCert']);
+
 
 // Setup del sistema
 Route::prefix('setup')->group(function () {

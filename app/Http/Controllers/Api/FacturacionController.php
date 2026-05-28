@@ -50,10 +50,6 @@ class FacturacionController extends Controller
     
     public function facturar(Request $request)
     {
-        if ($request->input('test_cert')) {
-            return $this->testCert();
-        }
-        
         $request->validate([
             'orden_id' => 'required|string',
         ]);
@@ -322,140 +318,7 @@ class FacturacionController extends Controller
         }
     }
     
-    public function testCert()
-    {
-        try {
-            $empresa = DB::table('empresas')->where('id', '2246b9a3-41fd-4e92-8124-11bea071dc77')->first();
-            if (!$empresa) return response()->json(['error' => 'Empresa not found']);
-            
-            $pem = $empresa->sunat_certificado_pem;
-            if (!$pem) return response()->json(['error' => 'Certificate pem is null']);
-            
-            $pem = str_replace(['\r\n', '\r', '\n', '\\n', '\\r'], "\n", $pem);
-            $certificadoLimpio = trim($pem);
-            $certificadoLimpio = str_replace(["\r\n", "\r"], "\n", $certificadoLimpio);
-            $lines = explode("\n", $certificadoLimpio);
-            $lines = array_map('trim', $lines);
-            $certificadoLimpio = implode("\n", $lines);
-            
-            $hasPrivateKey = strpos($certificadoLimpio, '-----BEGIN PRIVATE KEY-----') !== false && 
-                            strpos($certificadoLimpio, '-----END PRIVATE KEY-----') !== false;
-            
-            $hasCertificate = strpos($certificadoLimpio, '-----BEGIN CERTIFICATE-----') !== false && 
-                             strpos($certificadoLimpio, '-----END CERTIFICATE-----') !== false;
-            
-            $hasRsaPrivateKey = strpos($certificadoLimpio, '-----BEGIN RSA PRIVATE KEY-----') !== false && 
-                               strpos($certificadoLimpio, '-----END RSA PRIVATE KEY-----') !== false;
-                               
-            $passphrase = $empresa->sunat_certificado_password ?? '';
-            
-            $pkeyRawPass = openssl_pkey_get_private($pem, $passphrase);
-            $pkeyRawNoPass = openssl_pkey_get_private($pem);
-            
-            $pkeyCleanPass = openssl_pkey_get_private($certificadoLimpio, $passphrase);
-            $pkeyCleanNoPass = openssl_pkey_get_private($certificadoLimpio);
-            
-            $preparedPem = '';
-            $prepareError = null;
-            try {
-                // Reconstruct utilizing the exact preparation function
-                $reconstructed = trim($pem);
-                $reconstructed = str_replace(["\r\n", "\r"], "\n", $reconstructed);
-                $lines = explode("\n", $reconstructed);
-                $lines = array_map('trim', $lines);
-                $reconstructed = implode("\n", $lines);
-                
-                // Clean attributes
-                $lines = explode("\n", $reconstructed);
-                $cleanedLines = [];
-                $inPemBlock = false;
-                foreach ($lines as $line) {
-                    if (strpos(trim($line), '-----BEGIN') === 0) $inPemBlock = true;
-                    if ($inPemBlock) $cleanedLines[] = $line;
-                    if (strpos(trim($line), '-----END') === 0) $inPemBlock = false;
-                }
-                $cleanedPem = implode("\n", $cleanedLines);
-                
-                $output = [];
-                if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
-                    $privateKey = preg_replace('/\s+/', '', $matches[1]);
-                    $output[] = "-----BEGIN PRIVATE KEY-----";
-                    $output[] = rtrim(chunk_split($privateKey, 64, "\n"), "\n");
-                    $output[] = "-----END PRIVATE KEY-----";
-                }
-                if (preg_match('/-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----/s', $cleanedPem, $matches)) {
-                    $certificate = preg_replace('/\s+/', '', $matches[1]);
-                    $output[] = "-----BEGIN CERTIFICATE-----";
-                    $output[] = rtrim(chunk_split($certificate, 64, "\n"), "\n");
-                    $output[] = "-----END CERTIFICATE-----";
-                }
-                $reconstructedPem = implode("\n", $output);
-                
-                $pkeyReconstructedPass = openssl_pkey_get_private($reconstructedPem, $passphrase);
-                $pkeyReconstructedNoPass = openssl_pkey_get_private($reconstructedPem);
-                
-                $outputPriv = [];
-                if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
-                    $privateKey = preg_replace('/\s+/', '', $matches[1]);
-                    $outputPriv[] = "-----BEGIN PRIVATE KEY-----";
-                    $outputPriv[] = rtrim(chunk_split($privateKey, 64, "\n"), "\n");
-                    $outputPriv[] = "-----END PRIVATE KEY-----";
-                }
-                $onlyPrivateKeyPem = implode("\n", $outputPriv);
-                
-                $pkeyOnlyPrivPass = openssl_pkey_get_private($onlyPrivateKeyPem, $passphrase);
-                $pkeyOnlyPrivNoPass = openssl_pkey_get_private($onlyPrivateKeyPem);
-                
-                // Convert to PKCS#1
-                $pkcs1PrivateKeyPem = $this->pkcs8ToPkcs1($privateKey);
-                $pkeyPkcs1Pass = $pkcs1PrivateKeyPem ? openssl_pkey_get_private($pkcs1PrivateKeyPem, $passphrase) : false;
-                $pkeyPkcs1NoPass = $pkcs1PrivateKeyPem ? openssl_pkey_get_private($pkcs1PrivateKeyPem) : false;
-                
-                // Try generating a new key on the fly
-                $generatedKey = openssl_pkey_new([
-                    "private_key_bits" => 2048,
-                    "private_key_type" => OPENSSL_KEYTYPE_RSA,
-                ]);
-                
-                $preparedPem = [
-                    'reconstructed_with_pass' => is_resource($pkeyReconstructedPass) || $pkeyReconstructedPass instanceof \OpenSSLAsymmetricKey,
-                    'reconstructed_no_pass' => is_resource($pkeyReconstructedNoPass) || $pkeyReconstructedNoPass instanceof \OpenSSLAsymmetricKey,
-                    'only_priv_with_pass' => is_resource($pkeyOnlyPrivPass) || $pkeyOnlyPrivPass instanceof \OpenSSLAsymmetricKey,
-                    'only_priv_no_pass' => is_resource($pkeyOnlyPrivNoPass) || $pkeyOnlyPrivNoPass instanceof \OpenSSLAsymmetricKey,
-                    'pkcs1_with_pass' => is_resource($pkeyPkcs1Pass) || $pkeyPkcs1Pass instanceof \OpenSSLAsymmetricKey,
-                    'pkcs1_no_pass' => is_resource($pkeyPkcs1NoPass) || $pkeyPkcs1NoPass instanceof \OpenSSLAsymmetricKey,
-                    'generated_key_ok' => is_resource($generatedKey) || $generatedKey instanceof \OpenSSLAsymmetricKey,
-                    'reconstructed_len' => strlen($reconstructedPem),
-                ];
-            } catch (\Exception $e) {
-                $prepareError = $e->getMessage();
-            }
-            
-            $opensslErrors = [];
-            while ($err = openssl_error_string()) {
-                $opensslErrors[] = $err;
-            }
-                               
-            return response()->json([
-                'openssl_version' => OPENSSL_VERSION_TEXT,
-                'has_private_key' => $hasPrivateKey,
-                'has_certificate' => $hasCertificate,
-                'has_rsa_private_key' => $hasRsaPrivateKey,
-                'passphrase_used' => $passphrase,
-                'pkey_raw_with_pass' => is_resource($pkeyRawPass) || $pkeyRawPass instanceof \OpenSSLAsymmetricKey,
-                'pkey_raw_no_pass' => is_resource($pkeyRawNoPass) || $pkeyRawNoPass instanceof \OpenSSLAsymmetricKey,
-                'pkey_clean_with_pass' => is_resource($pkeyCleanPass) || $pkeyCleanPass instanceof \OpenSSLAsymmetricKey,
-                'pkey_clean_no_pass' => is_resource($pkeyCleanNoPass) || $pkeyCleanNoPass instanceof \OpenSSLAsymmetricKey,
-                'prepared_pem_status' => $preparedPem,
-                'only_priv_pem' => $onlyPrivateKeyPem,
-                'pkcs1_pem' => $pkcs1PrivateKeyPem,
-                'prepare_error' => $prepareError,
-                'openssl_errors' => $opensslErrors,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()]);
-        }
-    }
+
     
     protected function extractHashFromXml(string $xml): ?string
     {
@@ -510,24 +373,5 @@ class FacturacionController extends Controller
         return 'NÚMERO EN LETRAS';
     }
 
-    private function pkcs8ToPkcs1($pkcs8Base64)
-    {
-        $der = base64_decode($pkcs8Base64);
-        if (!$der) return false;
-        
-        $oid = "\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01";
-        $pos = strpos($der, $oid);
-        if ($pos === false) return false;
-        
-        $seqPos = strpos($der, "\x30", $pos + strlen($oid));
-        if ($seqPos === false) return false;
-        
-        $pkcs1Der = substr($der, $seqPos);
-        
-        $pem = "-----BEGIN RSA PRIVATE KEY-----\n";
-        $pem .= rtrim(chunk_split(base64_encode($pkcs1Der), 64, "\n"), "\n") . "\n";
-        $pem .= "-----END RSA PRIVATE KEY-----";
-        
-        return $pem;
-    }
+
 }
