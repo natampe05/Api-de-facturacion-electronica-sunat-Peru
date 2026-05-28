@@ -72,10 +72,79 @@ Route::get('/test-cert', function() {
         $hasRsaPrivateKey = strpos($certificadoLimpio, '-----BEGIN RSA PRIVATE KEY-----') !== false && 
                            strpos($certificadoLimpio, '-----END RSA PRIVATE KEY-----') !== false;
                            
+        $passphrase = $empresa->sunat_certificado_password ?? '';
+        
+        $pkeyRawPass = openssl_pkey_get_private($pem, $passphrase);
+        $pkeyRawNoPass = openssl_pkey_get_private($pem);
+        
+        $pkeyCleanPass = openssl_pkey_get_private($certificadoLimpio, $passphrase);
+        $pkeyCleanNoPass = openssl_pkey_get_private($certificadoLimpio);
+        
+        $preparedPem = '';
+        $prepareError = null;
+        try {
+            // Reconstruct utilizing the exact preparation function
+            $reconstructed = trim($pem);
+            $reconstructed = str_replace(["\r\n", "\r"], "\n", $reconstructed);
+            $lines = explode("\n", $reconstructed);
+            $lines = array_map('trim', $lines);
+            $reconstructed = implode("\n", $lines);
+            
+            // Clean attributes
+            $lines = explode("\n", $reconstructed);
+            $cleanedLines = [];
+            $inPemBlock = false;
+            foreach ($lines as $line) {
+                if (strpos(trim($line), '-----BEGIN') === 0) $inPemBlock = true;
+                if ($inPemBlock) $cleanedLines[] = $line;
+                if (strpos(trim($line), '-----END') === 0) $inPemBlock = false;
+            }
+            $cleanedPem = implode("\n", $cleanedLines);
+            
+            $output = [];
+            if (preg_match('/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s', $cleanedPem, $matches)) {
+                $privateKey = preg_replace('/\s+/', '', $matches[1]);
+                $output[] = "-----BEGIN PRIVATE KEY-----";
+                $output[] = chunk_split($privateKey, 64, "\n");
+                $output[] = "-----END PRIVATE KEY-----";
+            }
+            if (preg_match('/-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----/s', $cleanedPem, $matches)) {
+                $certificate = preg_replace('/\s+/', '', $matches[1]);
+                $output[] = "-----BEGIN CERTIFICATE-----";
+                $output[] = chunk_split($certificate, 64, "\n");
+                $output[] = "-----END CERTIFICATE-----";
+            }
+            $reconstructedPem = implode("\n", $output);
+            
+            $pkeyReconstructedPass = openssl_pkey_get_private($reconstructedPem, $passphrase);
+            $pkeyReconstructedNoPass = openssl_pkey_get_private($reconstructedPem);
+            
+            $preparedPem = [
+                'reconstructed_with_pass' => is_resource($pkeyReconstructedPass) || $pkeyReconstructedPass instanceof \OpenSSLAsymmetricKey,
+                'reconstructed_no_pass' => is_resource($pkeyReconstructedNoPass) || $pkeyReconstructedNoPass instanceof \OpenSSLAsymmetricKey,
+                'reconstructed_len' => strlen($reconstructedPem),
+            ];
+        } catch (\Exception $e) {
+            $prepareError = $e->getMessage();
+        }
+        
+        $opensslErrors = [];
+        while ($err = openssl_error_string()) {
+            $opensslErrors[] = $err;
+        }
+                           
         return [
             'has_private_key' => $hasPrivateKey,
             'has_certificate' => $hasCertificate,
             'has_rsa_private_key' => $hasRsaPrivateKey,
+            'passphrase_used' => $passphrase,
+            'pkey_raw_with_pass' => is_resource($pkeyRawPass) || $pkeyRawPass instanceof \OpenSSLAsymmetricKey,
+            'pkey_raw_no_pass' => is_resource($pkeyRawNoPass) || $pkeyRawNoPass instanceof \OpenSSLAsymmetricKey,
+            'pkey_clean_with_pass' => is_resource($pkeyCleanPass) || $pkeyCleanPass instanceof \OpenSSLAsymmetricKey,
+            'pkey_clean_no_pass' => is_resource($pkeyCleanNoPass) || $pkeyCleanNoPass instanceof \OpenSSLAsymmetricKey,
+            'prepared_pem_status' => $preparedPem,
+            'prepare_error' => $prepareError,
+            'openssl_errors' => $opensslErrors,
         ];
     } catch (\Exception $e) {
         return ['error' => $e->getMessage()];
