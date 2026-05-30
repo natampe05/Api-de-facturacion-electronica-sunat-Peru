@@ -20,7 +20,7 @@
             padding: 10pt;
             width: 80mm;
             background-color: white;
-            font-size: 8.5px;
+            font-size: 10px;
         }
 
         .container {
@@ -65,7 +65,7 @@
         }
 
         .company-name {
-            font-size: 10px;
+            font-size: 12px;
             font-weight: bold;
             margin-bottom: 2px;
             text-transform: uppercase;
@@ -73,20 +73,20 @@
         }
 
         .company-ruc {
-            font-size: 9px;
+            font-size: 11px;
             font-weight: bold;
             margin-bottom: 1px;
         }
 
         .company-details {
-            font-size: 8.5px;
+            font-size: 10px;
             line-height: 1.2;
             margin-bottom: 3px;
         }
 
         /* ================= DOCUMENT TITLE ================= */
         .document-title {
-            font-size: 9px;
+            font-size: 11px;
             font-weight: bold;
             text-align: center;
             margin: 5px 0;
@@ -97,7 +97,7 @@
         }
 
         .document-number {
-            font-size: 9px;
+            font-size: 11px;
             font-weight: bold;
             text-align: center;
             margin-bottom: 5px;
@@ -106,14 +106,14 @@
         /* ================= CLIENT INFO ================= */
         .client-section {
             margin: 4px 0;
-            font-size: 9px;
+            font-size: 10px;
             padding: 3px 0;
             border-bottom: 1px dashed #ccc;
         }
 
         .client-name {
             font-weight: bold;
-            font-size: 9px;
+            font-size: 10px;
             text-align: center;
             margin-bottom: 2px;
         }
@@ -121,11 +121,11 @@
         .client-separator {
             text-align: center;
             margin: 2px 0;
-            font-size: 9px;
+            font-size: 10px;
         }
 
         .client-details {
-            font-size: 9px;
+            font-size: 10px;
             margin-bottom: 3px;
             text-align: center;
         }
@@ -135,7 +135,7 @@
             border-top: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 2px 0;
-            font-size: 9px;
+            font-size: 7.5px;
             font-weight: bold;
             margin: 3px 0;
             display: table;
@@ -186,7 +186,7 @@
 
         .item {
             margin-bottom: 2px;
-            font-size: 9px;
+            font-size: 7.5px;
             display: table;
             width: 100%;
             table-layout: fixed;
@@ -228,7 +228,7 @@
         }
 
         .item-descripcion {
-            font-size: 9px;
+            font-size: 7.5px;
             text-align: left;
             margin-top: 1px;
         }
@@ -236,7 +236,7 @@
         /* ================= TOTALS ================= */
         .totals-section {
             margin: 3px 0;
-            font-size: 9px;
+            font-size: 7.5px;
             border-top: 1px solid #000;
             padding-top: 2px;
         }
@@ -246,7 +246,7 @@
             width: 100%;
             margin-bottom: 1px;
             font-weight: bold;
-            font-size: 9px;
+            font-size: 7.5px;
             line-height: 1.3;
             position: relative;
         }
@@ -276,12 +276,12 @@
             border-top: 1px solid #000;
             padding-top: 2px;
             margin-top: 2px;
-            font-size: 9px;
+            font-size: 8.5px;
         }
 
         .total-final .total-text,
         .total-final .total-value {
-            font-size: 9px;
+            font-size: 8.5px;
             font-weight: bold;
         }
 
@@ -293,7 +293,7 @@
         }
 
         .total-letras {
-            font-size: 9px;
+            font-size: 8.5px;
             font-weight: bold;
             margin: 3px 0;
             text-align: left;

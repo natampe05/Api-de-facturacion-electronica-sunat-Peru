@@ -20,7 +20,7 @@
             padding: 5pt;
             width: 50mm;
             background-color: white;
-            font-size: 7px;
+            font-size: 8.5px;
         }
 
         .container {
@@ -65,7 +65,7 @@
         }
 
         .company-name {
-            font-size: 8px;
+            font-size: 10px;
             font-weight: bold;
             margin-bottom: 1px;
             text-transform: uppercase;
@@ -73,20 +73,20 @@
         }
 
         .company-ruc {
-            font-size: 7px;
+            font-size: 9px;
             font-weight: bold;
             margin-bottom: 1px;
         }
 
         .company-details {
-            font-size: 7px;
+            font-size: 8.5px;
             line-height: 1.1;
             margin-bottom: 2px;
         }
 
         /* ================= DOCUMENT TITLE ================= */
         .document-title {
-            font-size: 7px;
+            font-size: 9px;
             font-weight: bold;
             text-align: center;
             margin: 3px 0;
@@ -97,7 +97,7 @@
         }
 
         .document-number {
-            font-size: 7px;
+            font-size: 9px;
             font-weight: bold;
             text-align: center;
             margin-bottom: 3px;
@@ -106,14 +106,14 @@
         /* ================= CLIENT INFO ================= */
         .client-section {
             margin: 3px 0;
-            font-size: 7.5px;
+            font-size: 8.5px;
             padding: 2px 0;
             border-bottom: 1px dashed #ccc;
         }
 
         .client-name {
             font-weight: bold;
-            font-size: 7.5px;
+            font-size: 8.5px;
             text-align: center;
             margin-bottom: 1px;
         }
@@ -121,11 +121,11 @@
         .client-separator {
             text-align: center;
             margin: 1px 0;
-            font-size: 7.5px;
+            font-size: 8.5px;
         }
 
         .client-details {
-            font-size: 7.5px;
+            font-size: 8.5px;
             margin-bottom: 2px;
             text-align: center;
         }
@@ -135,7 +135,7 @@
             border-top: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 1px 0;
-            font-size: 7.5px;
+            font-size: 6.5px;
             font-weight: bold;
             margin: 2px 0;
             display: table;
@@ -186,7 +186,7 @@
 
         .item {
             margin-bottom: 1px;
-            font-size: 7.5px;
+            font-size: 6.5px;
             display: table;
             width: 100%;
             table-layout: fixed;
@@ -228,7 +228,7 @@
         }
 
         .item-descripcion {
-            font-size: 7.5px;
+            font-size: 6.5px;
             text-align: left;
             margin-top: 1px;
         }
@@ -236,7 +236,7 @@
         /* ================= TOTALS ================= */
         .totals-section {
             margin: 2px 0;
-            font-size: 7.5px;
+            font-size: 6.5px;
             border-top: 1px solid #000;
             padding-top: 1px;
         }
@@ -246,7 +246,7 @@
             width: 100%;
             margin-bottom: 1px;
             font-weight: bold;
-            font-size: 7.5px;
+            font-size: 6.5px;
             line-height: 1.2;
             position: relative;
         }
@@ -301,7 +301,7 @@
 
         /* ================= PAYMENT INFO ================= */
         .payment-info {
-            font-size: 7.5px;
+            font-size: 6.5px;
             margin: 2px 0;
             text-align: left;
             padding: 2px 0;
