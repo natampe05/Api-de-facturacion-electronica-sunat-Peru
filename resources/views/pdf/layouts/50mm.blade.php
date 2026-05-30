@@ -2,11 +2,11 @@
 
 @section('format-styles')
     <style>
-        /* ================= BASE ================= */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-weight: bold !important;
         }
 
         @page {
@@ -15,10 +15,12 @@
 
         body {
             font-family: 'Helvetica', Arial, sans-serif;
+            font-weight: bold;
             margin: 0;
             padding: 5pt;
             width: 50mm;
             background-color: white;
+            font-size: 7px;
         }
 
         .container {
@@ -63,7 +65,7 @@
         }
 
         .company-name {
-            font-size: 9px;
+            font-size: 8px;
             font-weight: bold;
             margin-bottom: 1px;
             text-transform: uppercase;
@@ -71,20 +73,20 @@
         }
 
         .company-ruc {
-            font-size: 8px;
+            font-size: 7px;
             font-weight: bold;
             margin-bottom: 1px;
         }
 
         .company-details {
-            font-size: 8px;
+            font-size: 7px;
             line-height: 1.1;
             margin-bottom: 2px;
         }
 
         /* ================= DOCUMENT TITLE ================= */
         .document-title {
-            font-size: 8px;
+            font-size: 7px;
             font-weight: bold;
             text-align: center;
             margin: 3px 0;
@@ -95,7 +97,7 @@
         }
 
         .document-number {
-            font-size: 8px;
+            font-size: 7px;
             font-weight: bold;
             text-align: center;
             margin-bottom: 3px;
@@ -326,27 +328,27 @@
         }
 
         .footer-text {
-            font-size: 8px;
+            font-size: 7px;
             text-align: center;
             line-height: 1.1;
             margin: 1px 0;
         }
 
         .footer-url {
-            font-size: 8px;
+            font-size: 7px;
             text-align: center;
             font-weight: bold;
             margin: 1px 0;
         }
 
         .footer-auth {
-            font-size: 7px;
+            font-size: 6.5px;
             text-align: center;
             margin: 1px 0;
         }
 
         .powered-by {
-            font-size: 7px;
+            font-size: 6.5px;
             text-align: center;
             margin-top: 1px;
             color: #888;
