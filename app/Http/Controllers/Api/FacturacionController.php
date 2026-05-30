@@ -656,6 +656,7 @@ class FacturacionController extends Controller
                 'items' => is_string($orden->items) ? $orden->items : json_encode($orden->items),
                 'cliente_nombre' => $orden->cliente_nombre,
                 'metodo_pago' => $orden->metodo_pago,
+                'notas' => $motivo,
                 'sunat_estado' => 'pendiente',
                 'sunat_hash' => $sunatHash,
                 'sunat_xml_url' => $xmlBase64,
