@@ -464,7 +464,8 @@ class FacturacionController extends Controller
                 ->where('comprobante_serie', $serieNota)
                 ->max('comprobante_numero');
 
-            $numeroNota = ($maxNumero ?: 0) + 1;
+            $startNumero = $empresa->sunat_iniciar_nota_credito ?? 1;
+            $numeroNota = ($maxNumero ? max($maxNumero, $startNumero - 1) : ($startNumero - 1)) + 1;
             $numeroCompletoNota = $serieNota . '-' . str_pad($numeroNota, 8, '0', STR_PAD_LEFT);
 
             // 4. Crear cliente para Greenter
