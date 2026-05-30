@@ -39,6 +39,8 @@ class Company extends Model
         'modo_produccion',
         'logo_path',
         'activo',
+        'sunat_iniciar_boleta',
+        'sunat_iniciar_factura',
     ];
 
     protected $casts = [

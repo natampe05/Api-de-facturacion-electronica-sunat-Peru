@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\FacturacionController;
 
 // Facturación electrónica SUNAT
 Route::post('/facturar', [FacturacionController::class, 'facturar']);
+Route::post('/anular-comprobante', [FacturacionController::class, 'anularComprobante']);
 Route::post('/resumen-diario', [FacturacionController::class, 'enviarResumenDiario']);
 Route::get('/comprobantes/{id}/xml', [FacturacionController::class, 'downloadXmlPublic']);
 Route::get('/comprobantes/{id}/cdr', [FacturacionController::class, 'downloadCdrPublic']);

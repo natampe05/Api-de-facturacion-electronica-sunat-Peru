@@ -121,7 +121,12 @@ class FacturacionController extends Controller
                     ->where('tipo_comprobante', $orden->tipo_comprobante)
                     ->where('comprobante_serie', $serie)
                     ->max('comprobante_numero');
-                $numero = ($maxNumero ?: 0) + 1;
+                
+                $startNumero = $orden->tipo_comprobante === 'factura' 
+                    ? ($empresa->sunat_iniciar_factura ?? 1) 
+                    : ($empresa->sunat_iniciar_boleta ?? 1);
+                
+                $numero = ($maxNumero ? max($maxNumero, $startNumero - 1) : ($startNumero - 1)) + 1;
             }
             
             $numeroCompleto = $serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT);
@@ -404,11 +409,345 @@ class FacturacionController extends Controller
                 'success' => false,
                 'message' => 'Error de procesamiento: ' . $e->getMessage()
             ], 500);
+    }
+
+    public function anularComprobante(Request $request)
+    {
+        $request->validate([
+            'orden_id' => 'required|string',
+            'motivo' => 'nullable|string'
+        ]);
+
+        $ordenId = $request->input('orden_id');
+        $motivo = $request->input('motivo') ?: 'Anulación de la operación';
+
+        try {
+            // 1. Obtener la orden de la base de datos
+            $orden = DB::table('ordenes')->where('id', $ordenId)->first();
+            if (!$orden) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Orden no encontrada.'
+                ], 404);
+            }
+
+            // Si ya está anulada la orden, no hacer nada más
+            if ($orden->estado === 'anulado' || $orden->estado === 'anulada') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'El comprobante ya fue anulado.'
+                ]);
+            }
+
+            // Si es un ticket normal o no fue enviado a SUNAT (sunat_estado !== enviado), 
+            // solo anular localmente
+            if ($orden->tipo_comprobante === 'ticket' || $orden->sunat_estado !== 'enviado' || !$orden->comprobante_serie) {
+                DB::table('ordenes')
+                    ->where('id', $ordenId)
+                    ->update([
+                        'estado' => 'anulado',
+                        'updated_at' => now()
+                    ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Comprobante anulado localmente (no requiere nota de crédito).'
+                ]);
+            }
+
+            // 2. Obtener la empresa
+            $empresa = DB::table('empresas')->where('id', $orden->empresa_id)->first();
+            if (!$empresa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Empresa de la orden no encontrada.'
+                ], 404);
+            }
+
+            // 3. Determinar serie y número de la Nota de Crédito
+            $serieOriginal = $orden->comprobante_serie;
+            $serieNota = str_starts_with($serieOriginal, 'F') 
+                ? 'FC' . substr($serieOriginal, 2) 
+                : 'BC' . substr($serieOriginal, 2);
+
+            $maxNumero = DB::table('ordenes')
+                ->where('empresa_id', $empresa->id)
+                ->where('tipo_comprobante', 'nota_credito')
+                ->where('comprobante_serie', $serieNota)
+                ->max('comprobante_numero');
+
+            $numeroNota = ($maxNumero ?: 0) + 1;
+            $numeroCompletoNota = $serieNota . '-' . str_pad($numeroNota, 8, '0', STR_PAD_LEFT);
+
+            // 4. Crear cliente para Greenter
+            $clientDoc = '00000000';
+            $clientName = 'PÚBLICO EN GENERAL';
+            $clientAddress = '-';
+            
+            if ($orden->cliente_id) {
+                $cliente = DB::table('clientes')->where('id', $orden->cliente_id)->first();
+                if ($cliente) {
+                    $clientDoc = $cliente->dni ?: '00000000';
+                    $clientName = $cliente->nombre ?: 'PÚBLICO EN GENERAL';
+                    $clientAddress = $cliente->direccion ?: '-';
+                }
+            }
+            
+            $clientDocType = '0';
+            if (strlen($clientDoc) === 8) {
+                $clientDocType = '1'; // DNI
+            } elseif (strlen($clientDoc) === 11) {
+                $clientDocType = '6'; // RUC
+            }
+
+            // 5. Configurar empresa virtual para Greenter
+            $company = new SunatCompany();
+            $company->ruc = $empresa->ruc ?: '20000000001';
+            $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
+            $company->nombre_comercial = $empresa->nombre;
+            $company->direccion = $empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N';
+            $company->ubigeo = $empresa->ubigeo ?: '150101';
+            $company->departamento = $empresa->departamento ?: 'LIMA';
+            $company->provincia = $empresa->provincia ?: 'LIMA';
+            $company->distrito = $empresa->distrito ?: 'LIMA';
+            $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
+            $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
+            $company->certificado_pem = $empresa->sunat_certificado_pem;
+            $company->certificado_password = $empresa->sunat_certificado_password;
+            $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
+
+            if ($company->certificado_pem) {
+                $certPath = storage_path('app/public/certificado/certificado.pem');
+                if (!file_exists(dirname($certPath))) {
+                    mkdir(dirname($certPath), 0755, true);
+                }
+                file_put_contents($certPath, $company->certificado_pem);
+            }
+
+            // 6. Mapear items
+            $config = json_decode($empresa->configuracion, true) ?: [];
+            $porcentajeIgv = isset($config['igv']) ? (float)$config['igv'] : 18.00;
+
+            $itemsRaw = is_string($orden->items) ? json_decode($orden->items, true) : (array)$orden->items;
+            $detalles = [];
+            $valorVenta = 0;
+            $mtoIgv = 0;
+            
+            foreach ($itemsRaw as $index => $item) {
+                $precioConIgv = (float)($item['precio'] ?? ($item['subtotal'] / ($item['cantidad'] ?: 1)));
+                $cantidad = (float)($item['cantidad'] ?: 1);
+                
+                if ($porcentajeIgv > 0) {
+                    $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
+                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
+                    $igv = round($mtoValorVenta * ($porcentajeIgv / 100), 2);
+                    $totalImpuestos = $igv;
+                    $mtoPrecioUnitario = round(($mtoValorVenta + $igv) / $cantidad, 2);
+                    $tipAfeIgv = '10'; // Gravado
+                } else {
+                    $mtoValorUnitario = round($precioConIgv, 4);
+                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
+                    $igv = 0.00;
+                    $totalImpuestos = 0.00;
+                    $mtoPrecioUnitario = round($precioConIgv, 2);
+                    $tipAfeIgv = '20'; // Exonerado
+                }
+                
+                $valorVenta += $mtoValorVenta;
+                $mtoIgv += $igv;
+                
+                $detalles[] = [
+                    'codigo' => $item['producto_id'] ?? $item['id'] ?? ('PROD' . ($index + 1)),
+                    'descripcion' => $item['nombre'] ?? 'PRODUCTO',
+                    'unidad' => 'NIU',
+                    'cantidad' => $cantidad,
+                    'mto_valor_unitario' => $mtoValorUnitario,
+                    'mto_valor_venta' => $mtoValorVenta,
+                    'mto_base_igv' => $mtoValorVenta,
+                    'porcentaje_igv' => $porcentajeIgv,
+                    'igv' => $igv,
+                    'tip_afe_igv' => $tipAfeIgv,
+                    'total_impuestos' => $totalImpuestos,
+                    'mto_precio_unitario' => $mtoPrecioUnitario
+                ];
+            }
+            
+            $totalImpuestos = $mtoIgv;
+            $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
+            $leyendaTexto = $this->convertNumberToWords($mtoImpVenta, 'PEN');
+
+            // 7. Preparar documento de datos para Greenter (Nota de Crédito)
+            $documentData = [
+                'tipo_documento' => '07', // Nota de Crédito
+                'serie' => $serieNota,
+                'correlativo' => str_pad($numeroNota, 8, '0', STR_PAD_LEFT),
+                'fecha_emision' => date('Y-m-d\TH:i:sP'),
+                'tipo_doc_afectado' => $orden->tipo_comprobante === 'factura' ? '01' : '03',
+                'num_doc_afectado' => $orden->comprobante_serie . '-' . str_pad($orden->comprobante_numero, 8, '0', STR_PAD_LEFT),
+                'cod_motivo' => '01', // Anulación de la operación
+                'des_motivo' => $motivo,
+                'moneda' => 'PEN',
+                'client' => [
+                    'tipo_documento' => $clientDocType,
+                    'numero_documento' => $clientDoc,
+                    'razon_social' => $clientName,
+                    'direccion' => $clientAddress
+                ],
+                'mto_oper_gravadas' => $valorVenta,
+                'mto_oper_exoneradas' => 0,
+                'mto_oper_inafectas' => 0,
+                'mto_igv' => $mtoIgv,
+                'total_impuestos' => $totalImpuestos,
+                'mto_imp_venta' => $mtoImpVenta,
+                'detalles' => $detalles,
+                'leyendas' => [
+                    [
+                        'code' => '1000',
+                        'value' => $leyendaTexto
+                    ]
+                ]
+            ];
+
+            // 8. Instanciar GreenterService y firmar
+            $greenterService = new GreenterService($company);
+            $greenterDocument = $greenterService->createNote($documentData);
+            
+            if (!$greenterDocument) {
+                throw new Exception('No se pudo crear la Nota de Crédito para Greenter.');
+            }
+            
+            $xmlSigned = $greenterService->getXmlSigned($greenterDocument);
+            $sunatHash = null;
+            if ($xmlSigned) {
+                $sunatHash = $this->extractHashFromXml($xmlSigned);
+            }
+            $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned ?: '');
+            
+            $docObj = new SunatDocument();
+            $docObj->fecha_emision = date('Y-m-d H:i:s');
+            $docObj->numero_completo = $numeroCompletoNota;
+            $docObj->tipo_documento = '07';
+            
+            if ($xmlSigned) {
+                try {
+                    $this->fileService->saveXml($docObj, $xmlSigned);
+                } catch (Exception $e) {
+                    Log::warning('No se pudo guardar XML de Nota de Crédito en disco local: ' . $e->getMessage());
+                }
+            }
+
+            // 9. Crear el registro de la Nota de Crédito en 'ordenes' en Supabase
+            $notaId = (string) \Illuminate\Support\Str::uuid();
+            DB::table('ordenes')->insert([
+                'id' => $notaId,
+                'empresa_id' => $orden->empresa_id,
+                'cliente_id' => $orden->cliente_id,
+                'mesa_id' => $orden->mesa_id,
+                'cajero_id' => $orden->cajero_id,
+                'tipo_orden' => $orden->tipo_orden,
+                'estado' => 'pagada', // nota_credito activa/emitida
+                'tipo_comprobante' => 'nota_credito',
+                'comprobante_serie' => $serieNota,
+                'comprobante_numero' => $numeroNota,
+                'subtotal' => -$orden->subtotal,
+                'total' => -$orden->total,
+                'igv_monto' => -$orden->igv_monto,
+                'descuento_monto' => -$orden->descuento_monto,
+                'items' => is_string($orden->items) ? $orden->items : json_encode($orden->items),
+                'cliente_nombre' => $orden->cliente_nombre,
+                'metodo_pago' => $orden->metodo_pago,
+                'sunat_estado' => 'pendiente',
+                'sunat_hash' => $sunatHash,
+                'sunat_xml_url' => $xmlBase64,
+                'documento_afectado_serie' => $orden->comprobante_serie,
+                'documento_afectado_numero' => $orden->comprobante_numero,
+                'documento_afectado_tipo' => $orden->tipo_comprobante,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            // 10. Actualizar la orden original a 'anulado'
+            DB::table('ordenes')
+                ->where('id', $ordenId)
+                ->update([
+                    'estado' => 'anulado',
+                    'updated_at' => now()
+                ]);
+
+            // 11. Finalizar respuesta HTTP y enviar a SUNAT en segundo plano
+            $response = response()->json([
+                'success' => true,
+                'comprobante' => $numeroCompletoNota,
+                'message' => 'Nota de Crédito ' . $numeroCompletoNota . ' registrada localmente. Enviando a SUNAT en segundo plano...'
+            ]);
+            $response->send();
+            
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+
+            // --- CÓDIGO EN SEGUNDO PLANO (TRANSMISIÓN A SUNAT) ---
+            try {
+                $result = $greenterService->sendDocument($greenterDocument);
+                
+                if (!$xmlSigned && $result['xml']) {
+                    $xmlSigned = $result['xml'];
+                    $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned);
+                    $sunatHash = $this->extractHashFromXml($xmlSigned);
+                }
+                
+                $cdrBase64 = null;
+                if ($result['success'] && $result['cdr_zip']) {
+                    try {
+                        $this->fileService->saveCdr($docObj, $result['cdr_zip']);
+                    } catch (Exception $e) {
+                        Log::warning('No se pudo guardar CDR de Nota de Crédito en disco local: ' . $e->getMessage());
+                    }
+                    $cdrBase64 = 'data:application/zip;base64,' . base64_encode($result['cdr_zip']);
+                }
+                
+                $sunatEstado = $result['success'] ? 'enviado' : 'error';
+                $sunatMensaje = '';
+                
+                if ($result['success'] && $result['cdr_response']) {
+                    $sunatMensaje = $result['cdr_response']->getDescription();
+                } elseif ($result['error']) {
+                    $sunatMensaje = $result['error']->message ?? 'Error SUNAT desconocido';
+                }
+                
+                DB::table('ordenes')
+                    ->where('id', $notaId)
+                    ->update([
+                        'sunat_estado' => $sunatEstado,
+                        'sunat_hash' => $sunatHash,
+                        'sunat_mensaje' => $sunatMensaje,
+                        'sunat_xml_url' => $xmlBase64,
+                        'sunat_cdr_url' => $cdrBase64,
+                        'updated_at' => now()
+                    ]);
+                    
+            } catch (Exception $bgEx) {
+                Log::error('Error en segundo plano al enviar Nota de Crédito ' . $notaId . ': ' . $bgEx->getMessage());
+                DB::table('ordenes')
+                    ->where('id', $notaId)
+                    ->update([
+                        'sunat_estado' => 'error',
+                        'sunat_mensaje' => 'Error de transmisión: ' . $bgEx->getMessage(),
+                        'updated_at' => now()
+                    ]);
+            }
+
+            return;
+
+        } catch (Exception $e) {
+            Log::error('Error al generar Nota de Crédito para orden ' . $ordenId . ': ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de procesamiento: ' . $e->getMessage()
+            ], 500);
         }
     }
-    
 
-    
     protected function extractHashFromXml(string $xml): ?string
     {
         preg_match('/<ds:DigestValue[^>]*>([^<]+)<\/ds:DigestValue>/', $xml, $matches);
