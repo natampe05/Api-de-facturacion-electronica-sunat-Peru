@@ -716,11 +716,14 @@ class FacturacionController extends Controller
                     ]);
             }
 
+            $notaCreditoRow = DB::table('ordenes')->where('id', $notaId)->first();
+
             return response()->json([
                 'success' => isset($sunatEstado) && $sunatEstado === 'enviado',
                 'comprobante' => $numeroCompletoNota,
                 'estado' => $sunatEstado ?? 'error',
                 'mensaje' => $sunatMensaje ?? '',
+                'nota_credito' => $notaCreditoRow,
                 'message' => (isset($sunatEstado) && $sunatEstado === 'enviado')
                     ? 'Nota de Crédito ' . $numeroCompletoNota . ' registrada y enviada a SUNAT con éxito.'
                     : 'Nota de Crédito ' . $numeroCompletoNota . ' registrada localmente pero con error SUNAT: ' . ($sunatMensaje ?? 'No se pudo enviar.')
