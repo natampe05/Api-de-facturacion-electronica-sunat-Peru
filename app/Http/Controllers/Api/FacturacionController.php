@@ -396,6 +396,7 @@ class FacturacionController extends Controller
                 'success' => false,
                 'message' => 'Error de procesamiento: ' . $e->getMessage()
             ], 500);
+        }
     }
 
     public function anularComprobante(Request $request)
