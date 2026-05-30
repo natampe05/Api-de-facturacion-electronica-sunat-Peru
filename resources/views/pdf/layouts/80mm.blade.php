@@ -104,14 +104,14 @@
         /* ================= CLIENT INFO ================= */
         .client-section {
             margin: 4px 0;
-            font-size: 10px;
+            font-size: 9px;
             padding: 3px 0;
             border-bottom: 1px dashed #ccc;
         }
 
         .client-name {
             font-weight: bold;
-            font-size: 10px;
+            font-size: 9px;
             text-align: center;
             margin-bottom: 2px;
         }
@@ -119,11 +119,11 @@
         .client-separator {
             text-align: center;
             margin: 2px 0;
-            font-size: 10px;
+            font-size: 9px;
         }
 
         .client-details {
-            font-size: 10px;
+            font-size: 9px;
             margin-bottom: 3px;
             text-align: center;
         }
@@ -133,7 +133,7 @@
             border-top: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 2px 0;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
             margin: 3px 0;
             display: table;
@@ -143,29 +143,33 @@
 
         .items-header>div {
             display: table-cell;
-            text-align: center;
+            text-align: left;
             vertical-align: middle;
             padding: 1px;
         }
 
         .header-cant {
-            width: 15%;
+            width: 12%;
         }
 
         .header-um {
-            width: 10%;
+            width: 13%;
         }
 
         .header-cod {
-            width: 15%;
+            width: 25%;
         }
 
         .header-precio {
             width: 25%;
+            text-align: right;
+            padding-right: 3px;
         }
 
         .header-total {
-            width: 20%;
+            width: 25%;
+            text-align: right;
+            padding-right: 3px;
         }
 
         .header-desc {
@@ -180,7 +184,7 @@
 
         .item {
             margin-bottom: 2px;
-            font-size: 10px;
+            font-size: 9px;
             display: table;
             width: 100%;
             table-layout: fixed;
@@ -188,29 +192,33 @@
 
         .item>div {
             display: table-cell;
-            text-align: center;
+            text-align: left;
             vertical-align: top;
             padding: 1px;
         }
 
         .item-cant {
-            width: 15%;
+            width: 12%;
         }
 
         .item-um {
-            width: 10%;
+            width: 13%;
         }
 
         .item-cod {
-            width: 15%;
+            width: 25%;
         }
 
         .item-precio {
             width: 25%;
+            text-align: right;
+            padding-right: 3px;
         }
 
         .item-total {
-            width: 20%;
+            width: 25%;
+            text-align: right;
+            padding-right: 3px;
         }
 
         .item-desc {
@@ -218,7 +226,7 @@
         }
 
         .item-descripcion {
-            font-size: 10px;
+            font-size: 9px;
             text-align: left;
             margin-top: 1px;
         }
@@ -226,7 +234,7 @@
         /* ================= TOTALS ================= */
         .totals-section {
             margin: 3px 0;
-            font-size: 10px;
+            font-size: 9px;
             border-top: 1px solid #000;
             padding-top: 2px;
         }
@@ -236,7 +244,7 @@
             width: 100%;
             margin-bottom: 1px;
             font-weight: bold;
-            font-size: 10px;
+            font-size: 9px;
             line-height: 1.3;
             position: relative;
         }
@@ -266,12 +274,12 @@
             border-top: 1px solid #000;
             padding-top: 2px;
             margin-top: 2px;
-            font-size: 10px;
+            font-size: 9px;
         }
 
         .total-final .total-text,
         .total-final .total-value {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
         }
 
@@ -283,7 +291,7 @@
         }
 
         .total-letras {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
             margin: 3px 0;
             text-align: left;
@@ -291,7 +299,7 @@
 
         /* ================= PAYMENT INFO ================= */
         .payment-info {
-            font-size: 10px;
+            font-size: 9px;
             margin: 3px 0;
             text-align: left;
             padding: 3px 0;

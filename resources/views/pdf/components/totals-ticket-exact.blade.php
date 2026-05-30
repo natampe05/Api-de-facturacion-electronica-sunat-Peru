@@ -5,22 +5,19 @@
     {{-- Subtotal --}}
     <div class="total-line">
         <span class="total-text">TOTAL GRAVADO</span>
-        <span class="total-dots">........................</span>
-        <span class="total-value">(S/) {{ $totales['subtotal_formatted'] ?? '16.95' }}</span>
+        <span class="total-value">{{ ($totales['moneda'] ?? 'PEN') === 'PEN' ? 'S/' : ($totales['moneda'] ?? 'S/') }} {{ $totales['subtotal_formatted'] ?? '16.95' }}</span>
     </div>
     
     {{-- IGV --}}
     <div class="total-line">
         <span class="total-text">I.G.V</span>
-        <span class="total-dots">..............................</span>
-        <span class="total-value">(S/) {{ $totales['igv_formatted'] ?? '3.05' }}</span>
+        <span class="total-value">{{ ($totales['moneda'] ?? 'PEN') === 'PEN' ? 'S/' : ($totales['moneda'] ?? 'S/') }} {{ $totales['igv_formatted'] ?? '3.05' }}</span>
     </div>
     
     {{-- Total Final --}}
     <div class="total-line total-final">
         <span class="total-text">TOTAL</span>
-        <span class="total-dots">.................................</span>
-        <span class="total-value">(S/) {{ $totales['total_formatted'] ?? '20.00' }}</span>
+        <span class="total-value">{{ ($totales['moneda'] ?? 'PEN') === 'PEN' ? 'S/' : ($totales['moneda'] ?? 'S/') }} {{ $totales['total_formatted'] ?? '20.00' }}</span>
     </div>
 </div>
 
