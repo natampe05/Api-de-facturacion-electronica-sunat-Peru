@@ -306,19 +306,7 @@ class FacturacionController extends Controller
             }
             
             // Enviar respuesta exitosa de inmediato para liberar al cajero (si no es solo_enviar directo)
-            if (!$request->input('solo_enviar') && !$request->query('solo_enviar')) {
-                $response = response()->json([
-                    'success' => true,
-                    'comprobante' => $numeroCompleto,
-                    'message' => 'Comprobante firmado y registrado localmente. Enviando a SUNAT en segundo plano...'
-                ]);
-                $response->send();
-                
-                // Finalizar la conexión HTTP con el cliente para que continúe sin demora
-                if (function_exists('fastcgi_finish_request')) {
-                    fastcgi_finish_request();
-                }
-            }
+            // (Quitamos el retorno anticipado y fastcgi_finish_request para que sea síncrono en serverless)
             
             // --- CÓDIGO EN SEGUNDO PLANO (TRANSMISIÓN A SUNAT) ---
             try {
@@ -382,16 +370,15 @@ class FacturacionController extends Controller
                 }
             }
             
-            if ($request->input('solo_enviar') || $request->query('solo_enviar')) {
-                return response()->json([
-                    'success' => isset($sunatEstado) && $sunatEstado === 'enviado',
-                    'comprobante' => $numeroCompleto,
-                    'estado' => $sunatEstado ?? 'error',
-                    'mensaje' => $sunatMensaje ?? ''
-                ]);
-            }
-            
-            return;
+            return response()->json([
+                'success' => isset($sunatEstado) && $sunatEstado === 'enviado',
+                'comprobante' => $numeroCompleto,
+                'estado' => $sunatEstado ?? 'error',
+                'mensaje' => $sunatMensaje ?? '',
+                'message' => (isset($sunatEstado) && $sunatEstado === 'enviado')
+                    ? 'Comprobante enviado a SUNAT con éxito.'
+                    : 'Error SUNAT: ' . ($sunatMensaje ?? 'No se pudo enviar.')
+            ]);
             
         } catch (Exception $e) {
             Log::error('Error al facturar orden ' . $ordenId . ': ' . $e->getMessage());
@@ -675,17 +662,7 @@ class FacturacionController extends Controller
                     'updated_at' => now()
                 ]);
 
-            // 11. Finalizar respuesta HTTP y enviar a SUNAT en segundo plano
-            $response = response()->json([
-                'success' => true,
-                'comprobante' => $numeroCompletoNota,
-                'message' => 'Nota de Crédito ' . $numeroCompletoNota . ' registrada localmente. Enviando a SUNAT en segundo plano...'
-            ]);
-            $response->send();
-            
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
-            }
+            // 11. (Procesando anulación de forma síncrona en serverless)
 
             // --- CÓDIGO EN SEGUNDO PLANO (TRANSMISIÓN A SUNAT) ---
             try {
@@ -738,7 +715,15 @@ class FacturacionController extends Controller
                     ]);
             }
 
-            return;
+            return response()->json([
+                'success' => isset($sunatEstado) && $sunatEstado === 'enviado',
+                'comprobante' => $numeroCompletoNota,
+                'estado' => $sunatEstado ?? 'error',
+                'mensaje' => $sunatMensaje ?? '',
+                'message' => (isset($sunatEstado) && $sunatEstado === 'enviado')
+                    ? 'Nota de Crédito ' . $numeroCompletoNota . ' registrada y enviada a SUNAT con éxito.'
+                    : 'Nota de Crédito ' . $numeroCompletoNota . ' registrada localmente pero con error SUNAT: ' . ($sunatMensaje ?? 'No se pudo enviar.')
+            ]);
 
         } catch (Exception $e) {
             Log::error('Error al generar Nota de Crédito para orden ' . $ordenId . ': ' . $e->getMessage());
