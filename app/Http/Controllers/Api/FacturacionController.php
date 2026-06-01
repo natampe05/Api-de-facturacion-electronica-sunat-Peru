@@ -596,7 +596,10 @@ class FacturacionController extends Controller
                     'tip_afe_igv' => $tipAfeIgv,
                     'total_impuestos' => $totalImpuestos,
                     'mto_precio_unitario' => $mtoPrecioUnitario
-                ];            $descuentoMonto = (float)($orden->descuento_monto ?? 0);
+                ];
+            }
+
+            $descuentoMonto = (float)($orden->descuento_monto ?? 0);
             $descuentos = [];
             
             if ($descuentoMonto > 0) {
