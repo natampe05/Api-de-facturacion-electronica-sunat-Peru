@@ -1400,6 +1400,18 @@ class FacturacionController extends Controller
             <strong>MÉTODO DE PAGO:</strong> ' . htmlspecialchars(strtoupper($orden->metodo_pago ?: 'CONTADO')) . '
           </div>';
 
+        $estrategia = ($empresa->plan ?? '') === 'Básico' ? 'sellos' : ($config['estrategia'] ?? 'puntos');
+        $estrategiaLabel = strtolower($estrategia) === 'sellos' ? 'SELLOS' : 'PUNTOS';
+
+        if ($tc !== 'factura' && $tc !== 'nota_credito' && isset($orden->puntos_generados) && (int)$orden->puntos_generados > 0) {
+            $html .= '
+            <div class="center" style="border: 2px dashed #000; padding: 6px; margin: 8px 0; font-size: 10px; line-height: 1.3;">
+              ⭐ ¡FELICIDADES! ⭐<br>
+              Por tu compra has ganado<br>
+              <span style="font-size: 13px; font-weight: bold; display: block; margin-top: 3px;">+' . (int)$orden->puntos_generados . ' ' . $estrategiaLabel . '</span>
+            </div>';
+        }
+
         if ($isElectronico) {
             $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=" . urlencode(
                 "{$empresa->ruc}|" . ($tc === 'factura' ? '01' : ($tc === 'nota_credito' ? '07' : '03')) . "|" . ($orden->comprobante_serie) . "|" . str_pad($orden->comprobante_numero, 8, '0', STR_PAD_LEFT) . "|" . number_format($igvCalculado, 2, '.', '') . "|" . number_format($totalPagar, 2, '.', '') . "|" . $now->format('Y-m-d') . "|" . (strlen($clienteDoc) === 11 ? '6' : '1') . "|{$clienteDoc}|" . ($orden->sunat_hash ?: '') . "|"
