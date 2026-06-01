@@ -26,6 +26,7 @@ Route::post('/anular-comprobante', [FacturacionController::class, 'anularComprob
 Route::post('/resumen-diario', [FacturacionController::class, 'enviarResumenDiario']);
 Route::get('/comprobantes/{id}/xml', [FacturacionController::class, 'downloadXmlPublic']);
 Route::get('/comprobantes/{id}/cdr', [FacturacionController::class, 'downloadCdrPublic']);
+Route::get('/comprobantes/{id}/pdf', [FacturacionController::class, 'downloadPdfPublic']);
 Route::get('/run-storage-link', function() {
     try {
         $output = \Illuminate\Support\Facades\Artisan::call('storage:link');

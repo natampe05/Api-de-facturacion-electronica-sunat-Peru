@@ -265,17 +265,32 @@ class GreenterService
             $invoice->setPerception($percepcion);
         }
 
-        // Retención
+        // Descuentos y Retenciones
+        $descuentos = [];
+
+        if (isset($invoiceData['descuentos']) && is_array($invoiceData['descuentos'])) {
+            foreach ($invoiceData['descuentos'] as $descData) {
+                $charge = new \Greenter\Model\Sale\Charge();
+                $charge->setCodTipo($descData['cod_tipo'] ?? '02')
+                       ->setMontoBase((float)($descData['monto_base'] ?? 0))
+                       ->setFactor((float)($descData['factor'] ?? 0))
+                       ->setMonto((float)($descData['monto'] ?? 0));
+                $descuentos[] = $charge;
+            }
+        }
+
         if (isset($invoiceData['retencion']) && !empty($invoiceData['retencion'])) {
             $retencionData = $invoiceData['retencion'];
             $retencion = new \Greenter\Model\Sale\Charge();
-            
             $retencion->setCodTipo('62') // Código para retenciones (catálogo 53)
-                      ->setMontoBase($retencionData['monto_base'])
-                      ->setFactor($retencionData['tasa'] / 100) // Convertir porcentaje a decimal
-                      ->setMonto($retencionData['monto']);
+                      ->setMontoBase((float)$retencionData['monto_base'])
+                      ->setFactor((float)($retencionData['tasa'] / 100)) // Convertir porcentaje a decimal
+                      ->setMonto((float)$retencionData['monto']);
+            $descuentos[] = $retencion;
+        }
 
-            $invoice->setDescuentos([$retencion]);
+        if (!empty($descuentos)) {
+            $invoice->setDescuentos($descuentos);
         }
 
         // Empresa y cliente
@@ -425,6 +440,22 @@ class GreenterService
         if (isset($noteData['leyendas']) && !empty($noteData['leyendas'])) {
             $legends = $this->createLegends($noteData['leyendas']);
             $note->setLegends($legends);
+        }
+
+        // Descuentos
+        if (isset($noteData['descuentos']) && is_array($noteData['descuentos'])) {
+            $descuentos = [];
+            foreach ($noteData['descuentos'] as $descData) {
+                $charge = new \Greenter\Model\Sale\Charge();
+                $charge->setCodTipo($descData['cod_tipo'] ?? '02')
+                       ->setMontoBase((float)($descData['monto_base'] ?? 0))
+                       ->setFactor((float)($descData['factor'] ?? 0))
+                       ->setMonto((float)($descData['monto'] ?? 0));
+                $descuentos[] = $charge;
+            }
+            if (!empty($descuentos)) {
+                $note->setDescuentos($descuentos);
+            }
         }
 
         return $note;

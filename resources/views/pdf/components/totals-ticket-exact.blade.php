@@ -28,8 +28,8 @@
 
 {{-- Payment Info --}}
 <div class="payment-info">
-    <div><strong>FORMA DE PAGO:</strong> {{ $document->forma_pago_tipo ?? 'EFECTIVO' }}</div>
-    <div><strong>COND.VENTA:</strong> {{ $document->condicion_venta ?? 'CONTADO' }}</div>
+    <div><strong>CONDICIÓN DE PAGO:</strong> {{ $document->condicion_venta ?? 'CONTADO' }}</div>
+    <div><strong>MÉTODO DE PAGO:</strong> {{ $document->forma_pago_tipo ?? 'EFECTIVO' }}</div>
 </div>
 
 {{-- Observations --}}

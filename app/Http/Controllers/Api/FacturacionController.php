@@ -213,8 +213,45 @@ class FacturacionController extends Controller
                 ];
             }
             
-            $totalImpuestos = $mtoIgv;
-            $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
+            $descuentoMonto = (float)($orden->descuento_monto ?? 0);
+            $descuentos = [];
+            
+            if ($descuentoMonto > 0) {
+                if ($porcentajeIgv > 0) {
+                    $valorVentaDescontado = round($orden->total / (1 + ($porcentajeIgv / 100)), 2);
+                    $mtoIgvDescontado = round($orden->total - $valorVentaDescontado, 2);
+                } else {
+                    $valorVentaDescontado = (float)$orden->total;
+                    $mtoIgvDescontado = 0.00;
+                }
+                
+                $descuentoNeto = round($valorVenta - $valorVentaDescontado, 2);
+                $factor = $valorVenta > 0 ? round($descuentoNeto / $valorVenta, 5) : 0;
+                
+                if ($descuentoNeto > 0) {
+                    $descuentos[] = [
+                        'cod_tipo' => '02', // Descuento global que afecta la base imponible
+                        'monto' => $descuentoNeto,
+                        'monto_base' => $valorVenta,
+                        'factor' => $factor
+                    ];
+                    
+                    $mtoOperGravadas = $porcentajeIgv > 0 ? $valorVentaDescontado : 0;
+                    $mtoOperExoneradas = $porcentajeIgv > 0 ? 0 : $valorVentaDescontado;
+                    $valorVenta = $valorVentaDescontado;
+                    $mtoIgv = $mtoIgvDescontado;
+                    $totalImpuestos = $mtoIgvDescontado;
+                    $mtoImpVenta = (float)$orden->total;
+                } else {
+                    $mtoOperGravadas = $porcentajeIgv > 0 ? $valorVenta : 0;
+                    $mtoOperExoneradas = $porcentajeIgv > 0 ? 0 : $valorVenta;
+                    $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
+                }
+            } else {
+                $mtoOperGravadas = $porcentajeIgv > 0 ? $valorVenta : 0;
+                $mtoOperExoneradas = $porcentajeIgv > 0 ? 0 : $valorVenta;
+                $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
+            }
             
             // Generar leyenda del total en letras
             $leyendaTexto = $this->convertNumberToWords($mtoImpVenta, 'PEN');
@@ -233,8 +270,8 @@ class FacturacionController extends Controller
                     'direccion' => $clientAddress
                 ],
                 'tipo_operacion' => '0101',
-                'mto_oper_gravadas' => $valorVenta,
-                'mto_oper_exoneradas' => 0,
+                'mto_oper_gravadas' => $mtoOperGravadas,
+                'mto_oper_exoneradas' => $mtoOperExoneradas,
                 'mto_oper_inafectas' => 0,
                 'mto_oper_gratuitas' => 0,
                 'mto_igv_gratuitas' => 0,
@@ -244,6 +281,7 @@ class FacturacionController extends Controller
                 'sub_total' => $valorVenta,
                 'mto_imp_venta' => $mtoImpVenta,
                 'detalles' => $detalles,
+                'descuentos' => $descuentos,
                 'leyendas' => [
                     [
                         'code' => '1000',
@@ -558,13 +596,48 @@ class FacturacionController extends Controller
                     'tip_afe_igv' => $tipAfeIgv,
                     'total_impuestos' => $totalImpuestos,
                     'mto_precio_unitario' => $mtoPrecioUnitario
-                ];
+                ];            $descuentoMonto = (float)($orden->descuento_monto ?? 0);
+            $descuentos = [];
+            
+            if ($descuentoMonto > 0) {
+                if ($porcentajeIgv > 0) {
+                    $valorVentaDescontado = round($orden->total / (1 + ($porcentajeIgv / 100)), 2);
+                    $mtoIgvDescontado = round($orden->total - $valorVentaDescontado, 2);
+                } else {
+                    $valorVentaDescontado = (float)$orden->total;
+                    $mtoIgvDescontado = 0.00;
+                }
+                
+                $descuentoNeto = round($valorVenta - $valorVentaDescontado, 2);
+                $factor = $valorVenta > 0 ? round($descuentoNeto / $valorVenta, 5) : 0;
+                
+                if ($descuentoNeto > 0) {
+                    $descuentos[] = [
+                        'cod_tipo' => '02',
+                        'monto' => $descuentoNeto,
+                        'monto_base' => $valorVenta,
+                        'factor' => $factor
+                    ];
+                    
+                    $mtoOperGravadas = $porcentajeIgv > 0 ? $valorVentaDescontado : 0;
+                    $mtoOperExoneradas = $porcentajeIgv > 0 ? 0 : $valorVentaDescontado;
+                    $valorVenta = $valorVentaDescontado;
+                    $mtoIgv = $mtoIgvDescontado;
+                    $totalImpuestos = $mtoIgvDescontado;
+                    $mtoImpVenta = (float)$orden->total;
+                } else {
+                    $mtoOperGravadas = $porcentajeIgv > 0 ? $valorVenta : 0;
+                    $mtoOperExoneradas = $porcentajeIgv > 0 ? 0 : $valorVenta;
+                    $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
+                }
+            } else {
+                $mtoOperGravadas = $porcentajeIgv > 0 ? $valorVenta : 0;
+                $mtoOperExoneradas = $porcentajeIgv > 0 ? 0 : $valorVenta;
+                $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
             }
             
-            $totalImpuestos = $mtoIgv;
-            $mtoImpVenta = round($valorVenta + $mtoIgv, 2);
             $leyendaTexto = $this->convertNumberToWords($mtoImpVenta, 'PEN');
-
+ 
             // 7. Preparar documento de datos para Greenter (Nota de Crédito)
             $documentData = [
                 'tipo_documento' => '07', // Nota de Crédito
@@ -582,13 +655,14 @@ class FacturacionController extends Controller
                     'razon_social' => $clientName,
                     'direccion' => $clientAddress
                 ],
-                'mto_oper_gravadas' => $valorVenta,
-                'mto_oper_exoneradas' => 0,
+                'mto_oper_gravadas' => $mtoOperGravadas,
+                'mto_oper_exoneradas' => $mtoOperExoneradas,
                 'mto_oper_inafectas' => 0,
                 'mto_igv' => $mtoIgv,
                 'total_impuestos' => $totalImpuestos,
                 'mto_imp_venta' => $mtoImpVenta,
                 'detalles' => $detalles,
+                'descuentos' => $descuentos,
                 'leyendas' => [
                     [
                         'code' => '1000',
@@ -1102,5 +1176,280 @@ class FacturacionController extends Controller
             ], 500);
         }
     }
-}
 
+    public function downloadPdfPublic($id)
+    {
+        $orden = DB::table('ordenes')->where('id', $id)->first();
+        if (!$orden) {
+            abort(404, 'Comprobante no encontrado.');
+        }
+
+        $empresa = DB::table('empresas')->where('id', $orden->empresa_id)->first();
+        if (!$empresa) {
+            abort(404, 'Empresa no encontrada.');
+        }
+
+        // 1. Obtener datos del cliente
+        $clienteDoc = '00000000';
+        $clienteNombre = 'PÚBLICO EN GENERAL';
+        $clienteDireccion = '-';
+        $clienteTelefono = '';
+
+        if ($orden->cliente_id) {
+            $cliente = DB::table('clientes')->where('id', $orden->cliente_id)->first();
+            if ($cliente) {
+                $clienteDoc = $cliente->dni ?: '00000000';
+                $clienteNombre = $cliente->nombre ?: 'PÚBLICO EN GENERAL';
+                $clienteDireccion = $cliente->direccion ?: '-';
+                $clienteTelefono = $cliente->telefono ?: '';
+            }
+        } else {
+            $clienteNombre = $orden->cliente_nombre ?: 'PÚBLICO EN GENERAL';
+        }
+
+        // 2. Configurar variables del comprobante
+        $tc = $orden->tipo_comprobante ?: 'ticket';
+        $isElectronico = in_array($tc, ['boleta', 'factura', 'nota_credito']);
+        
+        $tituloComprobante = 'NOTA DE VENTA';
+        if ($tc === 'boleta') $tituloComprobante = 'BOLETA DE VENTA ELECTRÓNICA';
+        if ($tc === 'factura') $tituloComprobante = 'FACTURA DE VENTA ELECTRÓNICA';
+        if ($tc === 'nota_credito') $tituloComprobante = 'NOTA DE CRÉDITO ELECTRÓNICA';
+
+        $fallbackSerie = $tc === 'factura' 
+            ? ($empresa->sunat_serie_factura ?: 'F001') 
+            : ($tc === 'nota_credito' ? 'BC01' : ($empresa->sunat_serie_boleta ?: 'B001'));
+
+        $numDoc = $isElectronico
+            ? ($orden->comprobante_serie ?: $fallbackSerie) . '-' . str_pad($orden->comprobante_numero ?: 1, 8, '0', STR_PAD_LEFT)
+            : 'NP01-' . str_pad($orden->numero ?: 1, 8, '0', STR_PAD_LEFT);
+
+        $labelDoc = strlen($clienteDoc) === 11 ? 'RUC' : 'DNI';
+
+        // 3. Totales e Items
+        $items = json_decode($orden->items, true) ?: [];
+        $moneda = 'S/';
+        
+        $delivery = (float)($orden->monto_delivery ?? 0);
+        $propina = (float)($orden->propina ?? 0);
+        $descuento = (float)($orden->descuento_monto ?? 0);
+        
+        $totalItems = 0;
+        foreach ($items as $it) {
+            $totalItems += (float)($it['subtotal'] ?? 0);
+        }
+        
+        $totalTaxable = $totalItems + $delivery - $descuento;
+        $config = json_decode($empresa->configuracion, true) ?: [];
+        $igvPercent = isset($config['igv']) ? (float)$config['igv'] : 18.00;
+        
+        $opGravadas = $totalTaxable / (1 + ($igvPercent / 100));
+        $igvCalculado = $totalTaxable - $opGravadas;
+        $totalPagar = (float)($orden->total ?? ($totalTaxable + $propina));
+
+        $now = new \DateTime($orden->created_at);
+        $fechaEmision = $now->format('d/m/Y H:i');
+
+        // 4. Construir el HTML
+        $html = '
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            @page { margin: 0px; }
+            body { 
+              font-family: monospace; 
+              font-size: 9px; 
+              font-weight: bold; 
+              width: 100%; 
+              margin: 0; 
+              padding: 5px 8px; 
+              color: #000; 
+            }
+            .center { text-align: center; }
+            .title { font-size: 11px; font-weight: bold; margin-bottom: 2px; text-transform: uppercase; }
+            .header-box { border: 1px solid #000; padding: 4px; margin: 10px 0; text-align: center; font-size: 10px; }
+            .info-row { display: table; width: 100%; margin-bottom: 1px; }
+            .info-label { display: table-cell; width: 65px; font-weight: bold; }
+            .info-value { display: table-cell; text-align: left; }
+            table.items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            table.items-table th { border-bottom: 1px dashed #000; padding: 3px 0; text-align: left; font-size: 8px; }
+            table.items-table td { padding: 3px 0; vertical-align: top; font-size: 8px; }
+            .right { text-align: right; }
+            table.totals-table { width: 100%; margin-top: 10px; border-collapse: collapse; }
+            table.totals-table td { padding: 1px 0; font-size: 8px; }
+            .qr-container { text-align: center; margin: 15px 0; }
+            .qr-code { width: 100px; height: 100px; }
+            .line-dashed { border-top: 1px dashed #000; margin: 5px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="center">';
+        
+        if ($empresa->logo_url) {
+            $html .= '<img src="' . $empresa->logo_url . '" style="max-height: 40px; max-width: 120px; margin-bottom: 5px;" /><br>';
+        }
+        
+        $html .= '
+            <div class="title">' . htmlspecialchars(strtoupper($empresa->nombre)) . '</div>';
+        
+        if ($empresa->razon_social && strtolower($empresa->razon_social) !== strtolower($empresa->nombre)) {
+            $html .= '<div style="font-size: 9px; font-weight: bold; margin-bottom: 2px;">Razón Social: ' . htmlspecialchars(strtoupper($empresa->razon_social)) . '</div>';
+        }
+        
+        $html .= '
+            <div style="font-weight: bold;">RUC: ' . htmlspecialchars($empresa->ruc) . '</div>
+            <div>' . htmlspecialchars(strtoupper($empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N')) . '</div>
+          </div>
+
+          <div class="header-box">
+            <div style="font-weight: bold;">' . htmlspecialchars($tituloComprobante) . '</div>
+            <div style="font-weight: bold;">' . htmlspecialchars($numDoc) . '</div>
+          </div>
+
+          <div class="info-row"><span class="info-label">F. Emisión:</span><span class="info-value">' . htmlspecialchars($fechaEmision) . '</span></div>
+          <div class="info-row"><span class="info-label">Cliente:</span><span class="info-value">' . htmlspecialchars(strtoupper($clienteNombre)) . '</span></div>
+          <div class="info-row"><span class="info-label">' . htmlspecialchars($labelDoc) . ':</span><span class="info-value">' . htmlspecialchars($clienteDoc) . '</span></div>';
+        
+        if ($clienteTelefono) {
+            $html .= '<div class="info-row"><span class="info-label">Teléfono:</span><span class="info-value">' . htmlspecialchars($clienteTelefono) . '</span></div>';
+        }
+        
+        $html .= '
+          <div class="info-row"><span class="info-label">Dirección:</span><span class="info-value">' . htmlspecialchars(strtoupper($clienteDireccion)) . '</span></div>';
+          
+        if ($tc === 'nota_credito') {
+            $docAfectadoTipo = $orden->documento_afectado_tipo ?: 'boleta';
+            $docAfectadoNum = ($orden->documento_afectado_serie ?: '') . '-' . str_pad($orden->documento_afectado_numero ?: '', 8, '0', STR_PAD_LEFT);
+            $html .= '
+            <div class="info-row"><span class="info-label">Doc. Afectado:</span><span class="info-value">' . htmlspecialchars(strtoupper($docAfectadoTipo)) . ' ' . htmlspecialchars($docAfectadoNum) . '</span></div>
+            <div class="info-row"><span class="info-label">Motivo:</span><span class="info-value">' . htmlspecialchars(strtoupper($orden->notas ?: 'ANULACION DE LA OPERACION')) . '</span></div>';
+        }
+
+        $html .= '
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th style="width: 12%;">CANT</th>
+                <th style="width: 48%;">DESCRIPCIÓN</th>
+                <th style="width: 18%; text-align: right;">P.U.</th>
+                <th style="width: 22%; text-align: right;">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>';
+        
+        foreach ($items as $it) {
+            $cant = (float)($it['cantidad'] ?: 1);
+            $precio = (float)($it['precio'] ?? (($it['subtotal'] ?? 0) / $cant));
+            $subtot = (float)($it['subtotal'] ?? 0);
+            
+            $html .= '
+              <tr>
+                <td>' . $cant . '</td>
+                <td>
+                  ' . htmlspecialchars(strtoupper($it['nombre'])) . '';
+            
+            if (isset($it['subProductos']) && is_array($it['subProductos']) && count($it['subProductos']) > 0) {
+                foreach ($it['subProductos'] as $sub) {
+                    $html .= '<br><small style="font-size: 7px;">• ' . htmlspecialchars(strtoupper($sub['nombre'])) . (isset($sub['notas']) && $sub['notas'] ? ' (' . htmlspecialchars(strtoupper($sub['notas'])) . ')' : '') . '</small>';
+                }
+            } elseif (isset($it['opcionesSeleccionadas']) && $it['opcionesSeleccionadas']) {
+                $html .= '<br><small style="font-size: 7px;">Opc: ' . htmlspecialchars(strtoupper($it['opcionesSeleccionadas'])) . '</small>';
+            }
+            
+            if (isset($it['notas']) && $it['notas']) {
+                $html .= '<br><small style="font-size: 7px;">Nota: ' . htmlspecialchars(strtoupper($it['notas'])) . '</small>';
+            }
+            
+            $html .= '
+                </td>
+                <td class="right">' . number_format($precio, 2) . '</td>
+                <td class="right">' . number_format($subtot, 2) . '</td>
+              </tr>';
+        }
+        
+        $html .= '
+            </tbody>
+          </table>
+
+          <div class="line-dashed"></div>
+
+          <table class="totals-table">';
+        
+        if ($delivery > 0) {
+            $html .= '<tr><td colspan="3" class="right">DELIVERY:</td><td class="right">' . $moneda . ' ' . number_format($delivery, 2) . '</td></tr>';
+        }
+        if ($propina > 0) {
+            $html .= '<tr><td colspan="3" class="right">PROPINA:</td><td class="right">' . $moneda . ' ' . number_format($propina, 2) . '</td></tr>';
+        }
+        if ($descuento > 0) {
+            $html .= '<tr><td colspan="3" class="right">DESCUENTO:</td><td class="right">-' . $moneda . ' ' . number_format($descuento, 2) . '</td></tr>';
+        }
+        
+        $html .= '
+            <tr><td colspan="3" class="right">OP. GRAVADAS:</td><td class="right">' . $moneda . ' ' . number_format($opGravadas, 2) . '</td></tr>
+            <tr><td colspan="3" class="right">IGV (' . $igvPercent . '%):</td><td class="right">' . $moneda . ' ' . number_format($igvCalculado, 2) . '</td></tr>
+            <tr><td colspan="3" class="right" style="font-weight: bold; border-top: 1px dashed #000; padding-top: 3px;">' . ($tc === 'nota_credito' ? 'TOTAL DEVUELTO:' : 'TOTAL A PAGAR:') . '</td><td class="right" style="font-weight: bold; border-top: 1px dashed #000; padding-top: 3px;">' . $moneda . ' ' . number_format($totalPagar, 2) . '</td></tr>
+          </table>
+
+          <div style="margin-top: 8px; font-size: 9px;">
+            <strong>CONDICIÓN DE PAGO:</strong> CONTADO<br>
+            <strong>MÉTODO DE PAGO:</strong> ' . htmlspecialchars(strtoupper($orden->metodo_pago ?: 'CONTADO')) . '
+          </div>';
+
+        if ($isElectronico) {
+            $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=" . urlencode(
+                "{$empresa->ruc}|" . ($tc === 'factura' ? '01' : ($tc === 'nota_credito' ? '07' : '03')) . "|" . ($orden->comprobante_serie) . "|" . str_pad($orden->comprobante_numero, 8, '0', STR_PAD_LEFT) . "|" . number_format($igvCalculado, 2, '.', '') . "|" . number_format($totalPagar, 2, '.', '') . "|" . $now->format('Y-m-d') . "|" . (strlen($clienteDoc) === 11 ? '6' : '1') . "|{$clienteDoc}|" . ($orden->sunat_hash ?: '') . "|"
+            );
+            
+            $html .= '
+            <div class="qr-container">
+              <img src="' . $qrUrl . '" class="qr-code" />
+            </div>
+            
+            <div class="center" style="font-size: 8px; margin-top: 3px; word-break: break-all;">
+              <strong>Representación Digital:</strong><br>' . htmlspecialchars($orden->sunat_hash ?: '-') . '
+            </div>';
+        }
+
+        $html .= '
+          <div class="center" style="font-size: 8.5px; margin-top: 8px; line-height: 1.2;">
+            <div>Representación impresa de la</div>
+            <div style="font-weight: bold;">' . ($isElectronico ? ($tc === 'boleta' ? 'Boleta de Venta Electrónica' : ($tc === 'nota_credito' ? 'Nota de Crédito Electrónica' : 'Factura de Venta Electrónica')) : 'Nota de Venta') . '</div>';
+            
+        if ($isElectronico) {
+            $html .= '<div style="font-size: 7.5px; margin-top: 1px;">Autorizado mediante resolución SUNAT</div>';
+            if ($empresa->web_consulta) {
+                $html .= '<div style="font-size: 7px; margin-top: 2px; word-break: break-all;">Consulte su comprobante en:<br>' . htmlspecialchars($empresa->web_consulta) . '</div>';
+            }
+        }
+        
+        $html .= '
+            <br>
+            <div style="font-weight: bold;">¡Gracias por su preferencia!</div>
+          </div>
+        </body>
+        </html>';
+
+        $options = new \Dompdf\Options();
+        $options->set('defaultFont', 'Courier');
+        $options->set('isRemoteEnabled', true);
+        $options->set('isHtml5ParserEnabled', true);
+        
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->loadHtml($html);
+        
+        $width = 80 * 2.834645669;
+        $height = 200 * 2.834645669;
+        $dompdf->setPaper([0, 0, $width, $height], 'portrait');
+        
+        $dompdf->render();
+        
+        $filename = ($orden->comprobante_serie ?: 'DOC') . '-' . str_pad($orden->comprobante_numero ?: 1, 8, '0', STR_PAD_LEFT) . '.pdf';
+        
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+}

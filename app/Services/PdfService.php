@@ -362,32 +362,38 @@ class PdfService
 
     protected function calculateInvoiceTotals($invoice): array
     {
-        $detalles = $this->safeJsonDecode($invoice->detalles ?? $invoice->detalles_json ?? '[]');
+        $subtotal = (float)($invoice->mto_oper_gravadas ?? $invoice->valor_venta ?? 0);
+        $igv = (float)($invoice->mto_igv ?? 0);
+        $total = (float)($invoice->mto_imp_venta ?? 0);
+        $descuento = (float)($invoice->descuento_global ?? $invoice->descuento_monto ?? 0);
         
-        $subtotal = 0;
-        $igv = 0;
-        $total = 0;
-
-        if (count($detalles) > 0) {
-            foreach ($detalles as $detalle) {
-                if (!is_array($detalle)) continue;
-                
-                $cantidad = $detalle['cantidad'] ?? 0;
-                $valorUnitario = $detalle['mto_valor_unitario'] ?? 0;
-                $valorVenta = $detalle['mto_valor_venta'] ?? ($cantidad * $valorUnitario);
-                $igvDetalle = $detalle['igv'] ?? 0;
-                
-                $subtotal += $valorVenta;
-                $igv += $igvDetalle;
+        // Fallback to calculation if DB values are empty/0
+        if ($total == 0) {
+            $detalles = $this->safeJsonDecode($invoice->detalles ?? $invoice->detalles_json ?? '[]');
+            $subtotal = 0;
+            $igv = 0;
+            if (count($detalles) > 0) {
+                foreach ($detalles as $detalle) {
+                    if (!is_array($detalle)) continue;
+                    
+                    $cantidad = $detalle['cantidad'] ?? 0;
+                    $valorUnitario = $detalle['mto_valor_unitario'] ?? 0;
+                    $valorVenta = $detalle['mto_valor_venta'] ?? ($cantidad * $valorUnitario);
+                    $igvDetalle = $detalle['igv'] ?? 0;
+                    
+                    $subtotal += $valorVenta;
+                    $igv += $igvDetalle;
+                }
             }
+            $total = $subtotal + $igv - $descuento;
         }
-
-        $total = $subtotal + $igv;
 
         return [
             'subtotal' => $subtotal,
             'igv' => $igv,
             'total' => $total,
+            'descuento' => $descuento,
+            'descuento_formatted' => number_format($descuento, 2),
             'subtotal_formatted' => number_format($subtotal, 2),
             'igv_formatted' => number_format($igv, 2),
             'total_formatted' => number_format($total, 2),

@@ -89,6 +89,13 @@
                     </tr>
                 @endif
                 
+                @if(($document->descuento_global ?? $document->descuento_monto ?? 0) > 0)
+                    <tr>
+                        <td class="label">Descuentos:</td>
+                        <td class="value">-{{ $document->moneda }} {{ number_format($document->descuento_global ?? $document->descuento_monto ?? 0, 2) }}</td>
+                    </tr>
+                @endif
+                
                 <tr class="total-final">
                     <td class="label">TOTAL:</td>
                     <td class="value">{{ $document->moneda }} {{ number_format($document->mto_imp_venta, 2) }}</td>
@@ -132,6 +139,13 @@
                 <tr>
                     <td class="label">ICBPER:</td>
                     <td class="value">{{ number_format($document->mto_icbper, 2) }}</td>
+                </tr>
+            @endif
+            
+            @if(($document->descuento_global ?? $document->descuento_monto ?? 0) > 0)
+                <tr>
+                    <td class="label">Descuento:</td>
+                    <td class="value">-{{ number_format($document->descuento_global ?? $document->descuento_monto ?? 0, 2) }}</td>
                 </tr>
             @endif
             

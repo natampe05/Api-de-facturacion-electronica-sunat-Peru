@@ -13,7 +13,8 @@
                     </div>
                     <div class="info-footer">
                         <b>FECHA EMISIÓN:</b> {{ $fecha_emision }}<br>
-                        <b>CONDICIÓN DE PAGO:</b> {{ $document->forma_pago_tipo ?? 'CONTADO' }}<br>
+                        <b>CONDICIÓN DE PAGO:</b> {{ $document->condicion_venta ?? 'CONTADO' }}<br>
+                        <b>MÉTODO DE PAGO:</b> {{ $document->forma_pago_tipo ?? 'EFECTIVO' }}<br>
                         @if(!empty($document->observaciones))
                             <b>OBSERVACIONES:</b> {{ $document->observaciones }}<br>
                         @endif
@@ -46,7 +47,7 @@
         </tr>
         <tr>
             <td class="label">Total Descuentos</td>
-            <td>{{ $totales['moneda'] }} 0.00</td>
+            <td>{{ $totales['moneda'] }} {{ number_format($totales['descuento'] ?? 0, 2) }}</td>
         </tr>
         <tr>
             <td class="label">Total IGV</td>
