@@ -193,6 +193,12 @@ class FacturacionController extends Controller
                 $precioConIgv = (float)($item['precio'] ?? ($item['subtotal'] / ($item['cantidad'] ?: 1)));
                 $cantidad = (float)($item['cantidad'] ?: 1);
                 
+                // Omitir ítems gratuitos (precio 0) del comprobante SUNAT
+                // ya que causan error 3105 al no tener nodo de tributos válido
+                if ($precioConIgv <= 0) {
+                    continue;
+                }
+                
                 if ($porcentajeIgv > 0) {
                     $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
                     $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
@@ -602,6 +608,11 @@ class FacturacionController extends Controller
             foreach ($itemsRaw as $index => $item) {
                 $precioConIgv = (float)($item['precio'] ?? ($item['subtotal'] / ($item['cantidad'] ?: 1)));
                 $cantidad = (float)($item['cantidad'] ?: 1);
+                
+                // Omitir ítems gratuitos (precio 0) del comprobante SUNAT
+                if ($precioConIgv <= 0) {
+                    continue;
+                }
                 
                 if ($porcentajeIgv > 0) {
                     $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
