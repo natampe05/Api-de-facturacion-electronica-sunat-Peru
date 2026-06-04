@@ -122,13 +122,12 @@ class FacturacionController extends Controller
                     ->where('tipo_comprobante', $orden->tipo_comprobante)
                     ->where('comprobante_serie', $serie)
                     ->max('comprobante_numero');
-                
                 $startNumero = $orden->tipo_comprobante === 'factura' 
                     ? ($empresa->sunat_iniciar_factura ?? 1) 
                     : ($empresa->sunat_iniciar_boleta ?? 1);
                 
                 $numero = ($maxNumero ? max($maxNumero, $startNumero - 1) : ($startNumero - 1)) + 1;
-                $fechaPago = now();
+                $fechaPago = now('UTC');
             }
             
             $numeroCompleto = $serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT);
@@ -137,12 +136,12 @@ class FacturacionController extends Controller
             $updateData = [
                 'comprobante_serie' => $serie,
                 'comprobante_numero' => $numero,
-                'updated_at' => now()
+                'updated_at' => now('UTC')->toIso8601String()
             ];
             
             if ($fechaPago) {
-                $updateData['created_at'] = $fechaPago;
-                $orden->created_at = $fechaPago->toDateTimeString();
+                $updateData['created_at'] = $fechaPago->toIso8601String();
+                $orden->created_at = $fechaPago->toIso8601String();
             }
 
             DB::table('ordenes')
@@ -270,7 +269,7 @@ class FacturacionController extends Controller
                 'tipo_documento' => $orden->tipo_comprobante === 'factura' ? '01' : '03',
                 'serie' => $serie,
                 'correlativo' => str_pad($numero, 8, '0', STR_PAD_LEFT),
-                'fecha_emision' => date('Y-m-d\TH:i:sP', strtotime($orden->created_at)),
+                'fecha_emision' => \Carbon\Carbon::parse($orden->created_at)->setTimezone('America/Lima')->format('Y-m-d\TH:i:sP'),
                 'moneda' => 'PEN',
                 'client' => [
                     'tipo_documento' => $clientDocType,
@@ -331,7 +330,7 @@ class FacturacionController extends Controller
                 }
             }
             
-            // Actualizar la orden localmente de inmediato con los datos firmados
+            // Actualizar la orden de inmediato en la base de datos con los datos firmados
             DB::table('ordenes')
                 ->where('id', $ordenId)
                 ->update([
@@ -340,7 +339,7 @@ class FacturacionController extends Controller
                     'sunat_estado' => 'pendiente', // Cambiará a 'enviado' o 'error' en segundo plano
                     'sunat_hash' => $sunatHash,
                     'sunat_xml_url' => $xmlBase64,
-                    'updated_at' => now()
+                    'updated_at' => now('UTC')->toIso8601String()
                 ]);
             
             // Si solo se pidió firmar, retornar de inmediato (<50ms)
@@ -396,7 +395,7 @@ class FacturacionController extends Controller
                         'sunat_mensaje' => $sunatMensaje,
                         'sunat_xml_url' => $xmlBase64,
                         'sunat_cdr_url' => $cdrBase64,
-                        'updated_at' => now()
+                        'updated_at' => now('UTC')->toIso8601String()
                     ]);
                     
             } catch (Exception $bgEx) {
@@ -406,7 +405,7 @@ class FacturacionController extends Controller
                     ->update([
                         'sunat_estado' => 'error',
                         'sunat_mensaje' => 'Error de transmisión: ' . $bgEx->getMessage(),
-                        'updated_at' => now()
+                        'updated_at' => now('UTC')->toIso8601String()
                     ]);
                 
                 if ($request->input('solo_enviar') || $request->query('solo_enviar')) {
@@ -436,7 +435,7 @@ class FacturacionController extends Controller
                 ->update([
                     'sunat_estado' => 'error',
                     'sunat_mensaje' => 'Error interno: ' . $e->getMessage(),
-                    'updated_at' => now()
+                    'updated_at' => now('UTC')->toIso8601String()
                 ]);
                 
             return response()->json([
@@ -655,7 +654,7 @@ class FacturacionController extends Controller
                 'tipo_documento' => '07', // Nota de Crédito
                 'serie' => $serieNota,
                 'correlativo' => str_pad($numeroNota, 8, '0', STR_PAD_LEFT),
-                'fecha_emision' => date('Y-m-d\TH:i:sP'),
+                'fecha_emision' => \Carbon\Carbon::now('America/Lima')->format('Y-m-d\TH:i:sP'),
                 'tipo_doc_afectado' => $orden->tipo_comprobante === 'factura' ? '01' : '03',
                 'num_doc_afectado' => $orden->comprobante_serie . '-' . str_pad($orden->comprobante_numero, 8, '0', STR_PAD_LEFT),
                 'cod_motivo' => '01', // Anulación de la operación
@@ -738,8 +737,8 @@ class FacturacionController extends Controller
                 'documento_afectado_serie' => $orden->comprobante_serie,
                 'documento_afectado_numero' => $orden->comprobante_numero,
                 'documento_afectado_tipo' => $orden->tipo_comprobante,
-                'created_at' => now(),
-                'updated_at' => now()
+                'created_at' => now('UTC')->toIso8601String(),
+                'updated_at' => now('UTC')->toIso8601String()
             ]);
 
             // 10. Actualizar la orden original a 'anulado'
@@ -747,7 +746,7 @@ class FacturacionController extends Controller
                 ->where('id', $ordenId)
                 ->update([
                     'estado' => 'anulado',
-                    'updated_at' => now()
+                    'updated_at' => now('UTC')->toIso8601String()
                 ]);
 
             // 11. (Procesando anulación de forma síncrona en serverless)
@@ -789,7 +788,7 @@ class FacturacionController extends Controller
                         'sunat_mensaje' => $sunatMensaje,
                         'sunat_xml_url' => $xmlBase64,
                         'sunat_cdr_url' => $cdrBase64,
-                        'updated_at' => now()
+                        'updated_at' => now('UTC')->toIso8601String()
                     ]);
                     
             } catch (Exception $bgEx) {
@@ -799,7 +798,7 @@ class FacturacionController extends Controller
                     ->update([
                         'sunat_estado' => 'error',
                         'sunat_mensaje' => 'Error de transmisión: ' . $bgEx->getMessage(),
-                        'updated_at' => now()
+                        'updated_at' => now('UTC')->toIso8601String()
                     ]);
             }
 
@@ -1142,7 +1141,7 @@ class FacturacionController extends Controller
                             'sunat_mensaje' => $sunatMensaje,
                             'sunat_xml_url' => $xmlBase64,
                             'sunat_cdr_url' => $cdrBase64 ?: DB::raw('sunat_cdr_url'),
-                            'updated_at' => now()
+                            'updated_at' => now('UTC')->toIso8601String()
                         ]);
                         
                     $summariesSent[] = [
@@ -1169,7 +1168,7 @@ class FacturacionController extends Controller
                         ->update([
                             'sunat_estado' => 'error',
                             'sunat_mensaje' => $errorMsg,
-                            'updated_at' => now()
+                            'updated_at' => now('UTC')->toIso8601String()
                         ]);
                 }
             }
