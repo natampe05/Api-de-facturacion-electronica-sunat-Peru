@@ -364,7 +364,22 @@ class FacturacionController extends Controller
             // --- CÓDIGO EN SEGUNDO PLANO (TRANSMISIÓN A SUNAT) ---
             try {
                 // Enviar a SUNAT (esta llamada de red tarda varios segundos)
+                Log::info('Enviando documento a SUNAT', [
+                    'orden_id' => $ordenId,
+                    'comprobante' => $numeroCompleto,
+                    'tipo' => $orden->tipo_comprobante,
+                    'modo' => $company->modo_produccion ? 'PRODUCCIÓN' : 'BETA'
+                ]);
+                
                 $result = $greenterService->sendDocument($greenterDocument);
+                
+                Log::info('Resultado envío SUNAT', [
+                    'orden_id' => $ordenId,
+                    'success' => $result['success'],
+                    'has_error' => !empty($result['error']),
+                    'error_type' => $result['error'] ? get_class($result['error']) : 'null',
+                    'error_detail' => $result['error'] ? $this->extractErrorMessage($result['error']) : 'N/A'
+                ]);
                 
                 // Si el envío retornó un XML firmado alternativo, lo actualizamos
                 if (!$xmlSigned && $result['xml']) {
@@ -390,7 +405,7 @@ class FacturacionController extends Controller
                 if ($result['success'] && $result['cdr_response']) {
                     $sunatMensaje = $result['cdr_response']->getDescription();
                 } elseif ($result['error']) {
-                    $sunatMensaje = $result['error']->message ?? 'Error SUNAT desconocido';
+                    $sunatMensaje = $this->extractErrorMessage($result['error']);
                 }
                 
                 // Actualizar el estado final en Supabase
@@ -406,7 +421,9 @@ class FacturacionController extends Controller
                     ]);
                     
             } catch (Exception $bgEx) {
-                Log::error('Error en segundo plano al enviar a SUNAT la orden ' . $ordenId . ': ' . $bgEx->getMessage());
+                Log::error('Error en segundo plano al enviar a SUNAT la orden ' . $ordenId . ': ' . $bgEx->getMessage(), [
+                    'trace' => $bgEx->getTraceAsString()
+                ]);
                 DB::table('ordenes')
                     ->where('id', $ordenId)
                     ->update([
@@ -791,7 +808,7 @@ class FacturacionController extends Controller
                 if ($result['success'] && $result['cdr_response']) {
                     $sunatMensaje = $result['cdr_response']->getDescription();
                 } elseif ($result['error']) {
-                    $sunatMensaje = $result['error']->message ?? 'Error SUNAT desconocido';
+                    $sunatMensaje = $this->extractErrorMessage($result['error']);
                 }
                 
                 DB::table('ordenes')
@@ -1488,5 +1505,38 @@ class FacturacionController extends Controller
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ]);
+    }
+
+    /**
+     * Extraer mensaje de error de diferentes tipos de objetos de error.
+     * Greenter's ErrorResponse usa getMessage(), mientras que stdClass usa ->message.
+     */
+    protected function extractErrorMessage($error): string
+    {
+        if (is_string($error)) {
+            return $error;
+        }
+        
+        // Greenter ErrorResponse tiene getMessage() y getCode()
+        if (is_object($error) && method_exists($error, 'getMessage')) {
+            $code = method_exists($error, 'getCode') ? $error->getCode() : '';
+            $msg = $error->getMessage();
+            return $code ? "[$code] $msg" : ($msg ?: 'Error SUNAT sin mensaje');
+        }
+        
+        // stdClass u objetos con propiedades públicas
+        if (is_object($error) && isset($error->message)) {
+            $code = $error->code ?? '';
+            return $code ? "[$code] {$error->message}" : $error->message;
+        }
+        
+        // Array
+        if (is_array($error) && isset($error['message'])) {
+            $code = $error['code'] ?? '';
+            return $code ? "[$code] {$error['message']}" : $error['message'];
+        }
+        
+        // Fallback
+        return 'Error SUNAT: ' . (is_object($error) ? get_class($error) : json_encode($error));
     }
 }
