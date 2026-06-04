@@ -115,6 +115,7 @@ class FacturacionController extends Controller
             }
             
             $numero = $orden->comprobante_numero;
+            $fechaPago = null;
             if (!$numero) {
                 $maxNumero = DB::table('ordenes')
                     ->where('empresa_id', $empresa->id)
@@ -127,18 +128,26 @@ class FacturacionController extends Controller
                     : ($empresa->sunat_iniciar_boleta ?? 1);
                 
                 $numero = ($maxNumero ? max($maxNumero, $startNumero - 1) : ($startNumero - 1)) + 1;
+                $fechaPago = now();
             }
             
             $numeroCompleto = $serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT);
 
             // Actualizar la orden de inmediato en la base de datos con la serie y número
+            $updateData = [
+                'comprobante_serie' => $serie,
+                'comprobante_numero' => $numero,
+                'updated_at' => now()
+            ];
+            
+            if ($fechaPago) {
+                $updateData['created_at'] = $fechaPago;
+                $orden->created_at = $fechaPago->toDateTimeString();
+            }
+
             DB::table('ordenes')
                 ->where('id', $ordenId)
-                ->update([
-                    'comprobante_serie' => $serie,
-                    'comprobante_numero' => $numero,
-                    'updated_at' => now()
-                ]);
+                ->update($updateData);
             
             // 5. Instanciar y configurar la empresa virtual para Greenter
             $company = new SunatCompany();
