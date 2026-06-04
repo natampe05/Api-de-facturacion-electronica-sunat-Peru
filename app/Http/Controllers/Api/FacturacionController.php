@@ -99,6 +99,13 @@ class FacturacionController extends Controller
                 }
             }
             
+            // Fallback a los datos guardados directamente en la orden si no se obtuvo un DNI/RUC válido
+            if ((!$orden->cliente_id || $clientDoc === '00000000') && !empty($orden->cliente_dni)) {
+                $clientDoc = $orden->cliente_dni;
+                $clientName = $orden->cliente_nombre ?: 'PÚBLICO EN GENERAL';
+                $clientAddress = $orden->direccion ?: '-';
+            }
+            
             $clientDocType = '0';
             if (strlen($clientDoc) === 8) {
                 $clientDocType = '1'; // DNI
@@ -526,6 +533,13 @@ class FacturacionController extends Controller
                     $clientName = $cliente->nombre ?: 'PÚBLICO EN GENERAL';
                     $clientAddress = $cliente->direccion ?: '-';
                 }
+            }
+            
+            // Fallback a los datos guardados directamente en la orden si no se obtuvo un DNI/RUC válido
+            if ((!$orden->cliente_id || $clientDoc === '00000000') && !empty($orden->cliente_dni)) {
+                $clientDoc = $orden->cliente_dni;
+                $clientName = $orden->cliente_nombre ?: 'PÚBLICO EN GENERAL';
+                $clientAddress = $orden->direccion ?: '-';
             }
             
             $clientDocType = '0';
