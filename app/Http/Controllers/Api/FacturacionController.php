@@ -1242,22 +1242,44 @@ class FacturacionController extends Controller
             abort(404, 'Empresa no encontrada.');
         }
 
-        // 1. Obtener datos del cliente
-        $clienteDoc = '00000000';
-        $clienteNombre = 'PÚBLICO EN GENERAL';
-        $clienteDireccion = '-';
-        $clienteTelefono = '';
+        // 1. Obtener datos del cliente (intentar leer de la orden y fallback a la tabla de clientes si es necesario)
+        $clienteDoc = $orden->cliente_dni ?: '';
+        $clienteNombre = $orden->cliente_nombre ?: 'PÚBLICO EN GENERAL';
+        $clienteDireccion = $orden->direccion ?: '';
+        $clienteTelefono = $orden->telefono ?: '';
 
-        if ($orden->cliente_id) {
-            $cliente = DB::table('clientes')->where('id', $orden->cliente_id)->first();
-            if ($cliente) {
-                $clienteDoc = $cliente->dni ?: '00000000';
-                $clienteNombre = $cliente->nombre ?: 'PÚBLICO EN GENERAL';
-                $clienteDireccion = $cliente->direccion ?: '-';
-                $clienteTelefono = $cliente->telefono ?: '';
+        if (empty($clienteDoc) || $clienteDoc === '00000000') {
+            if ($orden->cliente_id) {
+                $cliente = DB::table('clientes')->where('id', $orden->cliente_id)->first();
+                if ($cliente) {
+                    if (empty($clienteDoc) || $clienteDoc === '00000000') {
+                        $clienteDoc = $cliente->dni ?: '00000000';
+                    }
+                    if (empty($clienteNombre) || $clienteNombre === 'PÚBLICO EN GENERAL') {
+                        $clienteNombre = $cliente->nombre ?: 'PÚBLICO EN GENERAL';
+                    }
+                    if (empty($clienteDireccion) || $clienteDireccion === '-') {
+                        $clienteDireccion = $cliente->direccion ?: '-';
+                    }
+                    if (empty($clienteTelefono)) {
+                        $clienteTelefono = $cliente->telefono ?: '';
+                    }
+                }
             }
         } else {
-            $clienteNombre = $orden->cliente_nombre ?: 'PÚBLICO EN GENERAL';
+            if ($orden->cliente_id) {
+                $cliente = DB::table('clientes')->where('id', $orden->cliente_id)->first();
+                if ($cliente && empty($clienteTelefono)) {
+                    $clienteTelefono = $cliente->telefono ?: '';
+                }
+            }
+        }
+        
+        if (empty($clienteDoc)) {
+            $clienteDoc = '00000000';
+        }
+        if (empty($clienteDireccion)) {
+            $clienteDireccion = '-';
         }
 
         // 2. Configurar variables del comprobante
@@ -1278,6 +1300,19 @@ class FacturacionController extends Controller
             : 'NP01-' . str_pad($orden->numero ?: 1, 8, '0', STR_PAD_LEFT);
 
         $labelDoc = strlen($clienteDoc) === 11 ? 'RUC' : 'DNI';
+
+        // Resolver tipo de orden (canal)
+        $resolvedCanal = $orden->tipo_orden ?? '';
+        $canalLabel = '';
+        if ($resolvedCanal === 'salon') {
+            $canalLabel = !empty($orden->mesa) ? 'SALÓN - ' . strtoupper($orden->mesa) : 'SALÓN';
+        } elseif ($resolvedCanal === 'llevar') {
+            $canalLabel = 'PARA LLEVAR';
+        } elseif ($resolvedCanal === 'delivery') {
+            $canalLabel = 'DELIVERY';
+        } elseif ($resolvedCanal === 'rapida') {
+            $canalLabel = 'VENTA RÁPIDA';
+        }
 
         // 3. Totales e Items
         $items = json_decode($orden->items, true) ?: [];
@@ -1312,7 +1347,7 @@ class FacturacionController extends Controller
             @page { margin: 0px; }
             body { 
               font-family: monospace; 
-              font-size: 9px; 
+              font-size: 9.5px; 
               font-weight: bold; 
               width: 100%; 
               margin: 0; 
@@ -1326,11 +1361,11 @@ class FacturacionController extends Controller
             .info-label { display: table-cell; width: 65px; font-weight: bold; }
             .info-value { display: table-cell; text-align: left; }
             table.items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-            table.items-table th { border-bottom: 1px dashed #000; padding: 3px 0; text-align: left; font-size: 8px; }
-            table.items-table td { padding: 3px 0; vertical-align: top; font-size: 8px; }
+            table.items-table th { border-bottom: 1px dashed #000; padding: 3px 0; text-align: left; font-size: 9.5px; }
+            table.items-table td { padding: 3px 0; vertical-align: top; font-size: 9.5px; }
             .right { text-align: right; }
             table.totals-table { width: 100%; margin-top: 10px; border-collapse: collapse; }
-            table.totals-table td { padding: 1px 0; font-size: 8px; }
+            table.totals-table td { padding: 1px 0; font-size: 9.5px; }
             .qr-container { text-align: center; margin: 15px 0; }
             .qr-code { width: 100px; height: 100px; }
             .line-dashed { border-top: 1px dashed #000; margin: 5px 0; }
@@ -1360,7 +1395,13 @@ class FacturacionController extends Controller
             <div style="font-weight: bold;">' . htmlspecialchars($numDoc) . '</div>
           </div>
 
-          <div class="info-row"><span class="info-label">F. Emisión:</span><span class="info-value">' . htmlspecialchars($fechaEmision) . '</span></div>
+          <div class="info-row"><span class="info-label">F. Emisión:</span><span class="info-value">' . htmlspecialchars($fechaEmision) . '</span></div>';
+        
+        if ($canalLabel) {
+            $html .= '<div class="info-row"><span class="info-label">Tipo Orden:</span><span class="info-value">' . htmlspecialchars($canalLabel) . '</span></div>';
+        }
+        
+        $html .= '
           <div class="info-row"><span class="info-label">Cliente:</span><span class="info-value">' . htmlspecialchars(strtoupper($clienteNombre)) . '</span></div>
           <div class="info-row"><span class="info-label">' . htmlspecialchars($labelDoc) . ':</span><span class="info-value">' . htmlspecialchars($clienteDoc) . '</span></div>';
         
@@ -1376,7 +1417,7 @@ class FacturacionController extends Controller
             $docAfectadoNum = ($orden->documento_afectado_serie ?: '') . '-' . str_pad($orden->documento_afectado_numero ?: '', 8, '0', STR_PAD_LEFT);
             $html .= '
             <div class="info-row"><span class="info-label">Doc. Afectado:</span><span class="info-value">' . htmlspecialchars(strtoupper($docAfectadoTipo)) . ' ' . htmlspecialchars($docAfectadoNum) . '</span></div>
-            <div class="info-row"><span class="info-label">Motivo:</span><span class="info-value">' . htmlspecialchars(strtoupper($orden->notas ?: 'ANULACION DE LA OPERACION')) . '</span></div>';
+            <div class="info-row"><span class="info-label">Motivo:</span><span class="info-value">' . htmlspecialchars(strtoupper($orden->notes ?: 'ANULACION DE LA OPERACION')) . '</span></div>';
         }
 
         $html .= '
@@ -1404,14 +1445,14 @@ class FacturacionController extends Controller
             
             if (isset($it['subProductos']) && is_array($it['subProductos']) && count($it['subProductos']) > 0) {
                 foreach ($it['subProductos'] as $sub) {
-                    $html .= '<br><small style="font-size: 7px;">• ' . htmlspecialchars(strtoupper($sub['nombre'])) . (isset($sub['notas']) && $sub['notas'] ? ' (' . htmlspecialchars(strtoupper($sub['notas'])) . ')' : '') . '</small>';
+                    $html .= '<br><small style="font-size: 8px;">• ' . htmlspecialchars(strtoupper($sub['nombre'])) . (isset($sub['notas']) && $sub['notas'] ? ' (' . htmlspecialchars(strtoupper($sub['notas'])) . ')' : '') . '</small>';
                 }
             } elseif (isset($it['opcionesSeleccionadas']) && $it['opcionesSeleccionadas']) {
-                $html .= '<br><small style="font-size: 7px;">Opc: ' . htmlspecialchars(strtoupper($it['opcionesSeleccionadas'])) . '</small>';
+                $html .= '<br><small style="font-size: 8px;">Opc: ' . htmlspecialchars(strtoupper($it['opcionesSeleccionadas'])) . '</small>';
             }
             
             if (isset($it['notas']) && $it['notas']) {
-                $html .= '<br><small style="font-size: 7px;">Nota: ' . htmlspecialchars(strtoupper($it['notas'])) . '</small>';
+                $html .= '<br><small style="font-size: 8px;">Nota: ' . htmlspecialchars(strtoupper($it['notas'])) . '</small>';
             }
             
             $html .= '
@@ -1442,7 +1483,7 @@ class FacturacionController extends Controller
         $html .= '
             <tr><td colspan="3" class="right">OP. GRAVADAS:</td><td class="right">' . $moneda . ' ' . number_format($opGravadas, 2) . '</td></tr>
             <tr><td colspan="3" class="right">IGV (' . $igvPercent . '%):</td><td class="right">' . $moneda . ' ' . number_format($igvCalculado, 2) . '</td></tr>
-            <tr><td colspan="3" class="right" style="font-weight: bold; border-top: 1px dashed #000; padding-top: 3px;">' . ($tc === 'nota_credito' ? 'TOTAL DEVUELTO:' : 'TOTAL A PAGAR:') . '</td><td class="right" style="font-weight: bold; border-top: 1px dashed #000; padding-top: 3px;">' . $moneda . ' ' . number_format($totalPagar, 2) . '</td></tr>
+            <tr><td colspan="3" class="right" style="font-size: 11px; font-weight: bold; border-top: 1px dashed #000; padding-top: 3px;">' . ($tc === 'nota_credito' ? 'TOTAL DEVUELTO:' : 'TOTAL A PAGAR:') . '</td><td class="right" style="font-size: 11px; font-weight: bold; border-top: 1px dashed #000; padding-top: 3px;">' . $moneda . ' ' . number_format($totalPagar, 2) . '</td></tr>
           </table>
 
           <div style="margin-top: 8px; font-size: 9px;">
