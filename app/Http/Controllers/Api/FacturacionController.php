@@ -1421,7 +1421,7 @@ class FacturacionController extends Controller
             $docAfectadoNum = ($orden->documento_afectado_serie ?: '') . '-' . str_pad($orden->documento_afectado_numero ?: '', 8, '0', STR_PAD_LEFT);
             $html .= '
             <div class="info-row"><span class="info-label">Doc. Afectado:</span><span class="info-value">' . htmlspecialchars(strtoupper($docAfectadoTipo)) . ' ' . htmlspecialchars($docAfectadoNum) . '</span></div>
-            <div class="info-row"><span class="info-label">Motivo:</span><span class="info-value">' . htmlspecialchars(strtoupper($orden->notes ?: 'ANULACION DE LA OPERACION')) . '</span></div>';
+            <div class="info-row"><span class="info-label">Motivo:</span><span class="info-value">' . htmlspecialchars(strtoupper($orden->notas ?: 'ANULACION DE LA OPERACION')) . '</span></div>';
         }
 
         $html .= '
