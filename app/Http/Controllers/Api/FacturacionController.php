@@ -407,7 +407,6 @@ class FacturacionController extends Controller
                     $cdrBase64 = 'data:application/zip;base64,' . base64_encode($result['cdr_zip']);
                 }
                 
-                $sunatEstado = $result['success'] ? 'enviado' : 'error';
                 $sunatMensaje = '';
                 
                 if ($result['success'] && $result['cdr_response']) {
@@ -415,6 +414,9 @@ class FacturacionController extends Controller
                 } elseif ($result['error']) {
                     $sunatMensaje = $this->extractErrorMessage($result['error']);
                 }
+                
+                // Clasificar el estado real basado en el código del CDR
+                $sunatEstado = $this->determineSunatEstado($result, $sunatMensaje);
                 
                 // Actualizar el estado final en Supabase
                 DB::table('ordenes')
@@ -817,7 +819,6 @@ class FacturacionController extends Controller
                     $cdrBase64 = 'data:application/zip;base64,' . base64_encode($result['cdr_zip']);
                 }
                 
-                $sunatEstado = $result['success'] ? 'enviado' : 'error';
                 $sunatMensaje = '';
                 
                 if ($result['success'] && $result['cdr_response']) {
@@ -825,6 +826,9 @@ class FacturacionController extends Controller
                 } elseif ($result['error']) {
                     $sunatMensaje = $this->extractErrorMessage($result['error']);
                 }
+                
+                // Clasificar el estado real basado en el código del CDR
+                $sunatEstado = $this->determineSunatEstado($result, $sunatMensaje);
                 
                 DB::table('ordenes')
                     ->where('id', $notaId)
@@ -874,6 +878,54 @@ class FacturacionController extends Controller
     {
         preg_match('/<ds:DigestValue[^>]*>([^<]+)<\/ds:DigestValue>/', $xml, $matches);
         return $matches[1] ?? null;
+    }
+
+    /**
+     * Determinar el estado real de SUNAT basado en el código del CDR.
+     * - Código 0: Aceptado sin observaciones
+     * - Código 4xxx: Aceptado con observaciones (warnings)
+     * - Código 2xxx/3xxx: Rechazado
+     * - Sin CDR o error de comunicación: error
+     */
+    protected function determineSunatEstado(array $result, string $sunatMensaje): string
+    {
+        if (!$result['success']) {
+            return 'rechazado';
+        }
+
+        // Si hay CDR response, analizar el código
+        if ($result['cdr_response']) {
+            $cdrCode = null;
+            if (method_exists($result['cdr_response'], 'getCode')) {
+                $cdrCode = (string) $result['cdr_response']->getCode();
+            }
+
+            // También extraer código del mensaje como fallback
+            if (!$cdrCode && preg_match('/^(\d{4})\s*-/', $sunatMensaje, $matches)) {
+                $cdrCode = $matches[1];
+            }
+
+            if ($cdrCode) {
+                $prefix = substr($cdrCode, 0, 1);
+                if ($prefix === '2' || $prefix === '3') {
+                    return 'rechazado';
+                }
+                if ($prefix === '4') {
+                    return 'aceptado_observaciones';
+                }
+            }
+
+            // Fallback: revisar texto del mensaje para detectar rechazos
+            $msgLower = strtolower($sunatMensaje);
+            if (str_contains($msgLower, 'rechazad')) {
+                return 'rechazado';
+            }
+            if (str_contains($msgLower, 'observacion')) {
+                return 'aceptado_observaciones';
+            }
+        }
+
+        return 'enviado';
     }
     
     protected function convertNumberToWords(float $numero, string $moneda): string
