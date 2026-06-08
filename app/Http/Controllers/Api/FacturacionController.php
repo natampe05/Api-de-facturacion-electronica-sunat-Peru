@@ -512,7 +512,7 @@ class FacturacionController extends Controller
                     ->where('id', $ordenId)
                     ->update([
                         'estado' => 'anulado',
-                        'updated_at' => now()
+                        'updated_at' => now('UTC')->toIso8601String()
                     ]);
                 
                 return response()->json([
@@ -744,7 +744,7 @@ class FacturacionController extends Controller
             $xmlBase64 = 'data:application/xml;base64,' . base64_encode($xmlSigned ?: '');
             
             $docObj = new SunatDocument();
-            $docObj->fecha_emision = date('Y-m-d H:i:s');
+            $docObj->fecha_emision = \Carbon\Carbon::now('America/Lima')->toDateTimeString();
             $docObj->numero_completo = $numeroCompletoNota;
             $docObj->tipo_documento = '07';
             
@@ -1066,7 +1066,7 @@ class FacturacionController extends Controller
             $summariesSent = [];
             
             foreach ($boletasByDate as $emissionDate => $dateBoletas) {
-                $todayStr = date('Ymd');
+                $todayStr = \Carbon\Carbon::now('America/Lima')->format('Ymd');
                 
                 // Encontrar el correlativo para el día
                 $lastMessage = DB::table('ordenes')
@@ -1136,7 +1136,7 @@ class FacturacionController extends Controller
                 }
                 
                 $summaryData = [
-                    'fecha_resumen' => date('Y-m-d'), // Fecha de generación
+                    'fecha_resumen' => \Carbon\Carbon::now('America/Lima')->toDateString(), // Fecha de generación
                     'fecha_generacion' => $emissionDate, // Fecha de referencia
                     'correlativo' => $correlativoStr,
                     'detalles' => $detalles
