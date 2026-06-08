@@ -15,6 +15,7 @@ use Exception;
 class SunatCompany extends Company
 {
     public $invoiceEndpointOverride;
+    public $cod_local;
     
     public function getInvoiceEndpoint(): string
     {
@@ -156,21 +157,26 @@ class FacturacionController extends Controller
                 ->update($updateData);
             
             // 5. Instanciar y configurar la empresa virtual para Greenter
+            $sucursal = null;
+            if (!empty($orden->sucursal_id)) {
+                $sucursal = DB::table('sucursales')->where('id', $orden->sucursal_id)->first();
+            }
+
             $company = new SunatCompany();
             $company->ruc = $empresa->ruc ?: '20000000001';
             $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
             $company->nombre_comercial = $empresa->nombre;
-            $company->direccion = $empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N';
-            $company->ubigeo = $empresa->ubigeo ?: '150101';
-            $company->departamento = $empresa->departamento ?: 'LIMA';
-            $company->provincia = $empresa->provincia ?: 'LIMA';
-            $company->distrito = $empresa->distrito ?: 'LIMA';
+            $company->cod_local = $sucursal && !empty($sucursal->codigo_establecimiento) ? $sucursal->codigo_establecimiento : '0000';
+            $company->direccion = $sucursal && !empty($sucursal->direccion) ? $sucursal->direccion : ($empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N');
+            $company->ubigeo = $sucursal && !empty($sucursal->ubigeo) ? $sucursal->ubigeo : ($empresa->ubigeo ?: '150101');
+            $company->departamento = $sucursal && !empty($sucursal->departamento) ? $sucursal->departamento : ($empresa->departamento ?: 'LIMA');
+            $company->provincia = $sucursal && !empty($sucursal->provincia) ? $sucursal->provincia : ($empresa->provincia ?: 'LIMA');
+            $company->distrito = $sucursal && !empty($sucursal->distrito) ? $sucursal->distrito : ($empresa->distrito ?: 'LIMA');
             $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
             $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
             $company->certificado_pem = $empresa->sunat_certificado_pem;
             $company->certificado_password = $empresa->sunat_certificado_password;
             $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
-            
             // Escribir certificado a disco
             if ($company->certificado_pem) {
                 $certPath = storage_path('app/public/certificado/certificado.pem');
@@ -507,9 +513,9 @@ class FacturacionController extends Controller
                 ]);
             }
 
-            // Si es un ticket normal o no fue enviado a SUNAT (sunat_estado !== enviado), 
+            // Si es un ticket normal o no fue enviado con éxito a SUNAT (ni enviado ni aceptado con observaciones), 
             // solo anular localmente
-            if ($orden->tipo_comprobante === 'ticket' || $orden->sunat_estado !== 'enviado' || !$orden->comprobante_serie) {
+            if ($orden->tipo_comprobante === 'ticket' || !in_array($orden->sunat_estado, ['enviado', 'aceptado_observaciones']) || !$orden->comprobante_serie) {
                 DB::table('ordenes')
                     ->where('id', $ordenId)
                     ->update([
@@ -576,16 +582,24 @@ class FacturacionController extends Controller
                 $clientDocType = '6'; // RUC
             }
 
+
+
             // 5. Configurar empresa virtual para Greenter
+            $sucursal = null;
+            if (!empty($orden->sucursal_id)) {
+                $sucursal = DB::table('sucursales')->where('id', $orden->sucursal_id)->first();
+            }
+
             $company = new SunatCompany();
             $company->ruc = $empresa->ruc ?: '20000000001';
             $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
             $company->nombre_comercial = $empresa->nombre;
-            $company->direccion = $empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N';
-            $company->ubigeo = $empresa->ubigeo ?: '150101';
-            $company->departamento = $empresa->departamento ?: 'LIMA';
-            $company->provincia = $empresa->provincia ?: 'LIMA';
-            $company->distrito = $empresa->distrito ?: 'LIMA';
+            $company->cod_local = $sucursal && !empty($sucursal->codigo_establecimiento) ? $sucursal->codigo_establecimiento : '0000';
+            $company->direccion = $sucursal && !empty($sucursal->direccion) ? $sucursal->direccion : ($empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N');
+            $company->ubigeo = $sucursal && !empty($sucursal->ubigeo) ? $sucursal->ubigeo : ($empresa->ubigeo ?: '150101');
+            $company->departamento = $sucursal && !empty($sucursal->departamento) ? $sucursal->departamento : ($empresa->departamento ?: 'LIMA');
+            $company->provincia = $sucursal && !empty($sucursal->provincia) ? $sucursal->provincia : ($empresa->provincia ?: 'LIMA');
+            $company->distrito = $sucursal && !empty($sucursal->distrito) ? $sucursal->distrito : ($empresa->distrito ?: 'LIMA');
             $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
             $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
             $company->certificado_pem = $empresa->sunat_certificado_pem;
@@ -1106,10 +1120,13 @@ class FacturacionController extends Controller
             $config = json_decode($empresa->configuracion, true) ?: [];
             $porcentajeIgv = isset($config['igv']) ? (float)$config['igv'] : 18.00;
             
+
+            
             $company = new SunatCompany();
             $company->ruc = $empresa->ruc ?: '20000000001';
             $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
             $company->nombre_comercial = $empresa->nombre;
+            $company->cod_local = '0000';
             $company->direccion = $empresa->direccion_fiscal ?: 'AV. PRINCIPAL S/N';
             $company->ubigeo = $empresa->ubigeo ?: '150101';
             $company->departamento = $empresa->departamento ?: 'LIMA';
@@ -1120,7 +1137,7 @@ class FacturacionController extends Controller
             $company->certificado_pem = $empresa->sunat_certificado_pem;
             $company->certificado_password = $empresa->sunat_certificado_password;
             $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
-            
+
             if ($company->certificado_pem) {
                 $certPath = storage_path('app/public/certificado/certificado.pem');
                 if (!file_exists(dirname($certPath))) {

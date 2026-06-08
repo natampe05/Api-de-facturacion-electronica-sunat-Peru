@@ -159,14 +159,16 @@ class GreenterService
                 ->setRazonSocial($this->company->razon_social)
                 ->setNombreComercial($this->company->nombre_comercial);
 
+
+
         $address = new Address();
-        $address->setUbigueo($this->company->ubigeo)
-                ->setDepartamento($this->company->departamento)
-                ->setProvincia($this->company->provincia)
-                ->setDistrito($this->company->distrito)
+        $address->setUbigueo($this->company->ubigeo ?: '150101')
+                ->setDepartamento($this->company->departamento ?: 'LIMA')
+                ->setProvincia($this->company->provincia ?: 'LIMA')
+                ->setDistrito($this->company->distrito ?: 'LIMA')
                 ->setUrbanizacion('-')
-                ->setDireccion($this->company->direccion)
-                ->setCodLocal('0000');
+                ->setDireccion($this->company->direccion ?: 'AV. PRINCIPAL S/N')
+                ->setCodLocal(isset($this->company->cod_local) && !empty($this->company->cod_local) ? $this->company->cod_local : '0000');
 
         $company->setAddress($address);
 
@@ -843,8 +845,8 @@ class GreenterService
         
         // Configuración básica
         
-        $summary->setFecGeneracion(new \DateTime($summaryData['fecha_resumen']))
-                ->setFecResumen(new \DateTime($summaryData['fecha_generacion']))
+        $summary->setFecGeneracion(new \DateTime($summaryData['fecha_generacion']))
+                ->setFecResumen(new \DateTime($summaryData['fecha_resumen']))
                 ->setCorrelativo($summaryData['correlativo'])
                 ->setCompany($this->getGreenterCompany());
 
@@ -1097,20 +1099,20 @@ class GreenterService
 
     protected function getGRECompany()
     {
-        // Para GRE usar datos consistentes con las credenciales SOL de test
+        // Para GRE usar los datos reales de la empresa (como getGreenterCompany)
         $company = new GreenterCompany();
         
-        $company->setRuc('20161515648') // Debe coincidir con credenciales SOL
-                ->setRazonSocial('EMPRESA DE PRUEBA SUNAT')
-                ->setNombreComercial('EMPRESA DE PRUEBA')
+        $company->setRuc($this->company->ruc)
+                ->setRazonSocial($this->company->razon_social)
+                ->setNombreComercial($this->company->nombre_comercial)
                 ->setAddress((new Address())
-                    ->setUbigueo('150101')
-                    ->setDepartamento('LIMA')
-                    ->setProvincia('LIMA')
-                    ->setDistrito('LIMA')
+                    ->setUbigueo($this->company->ubigeo ?: '150101')
+                    ->setDepartamento($this->company->departamento ?: 'LIMA')
+                    ->setProvincia($this->company->provincia ?: 'LIMA')
+                    ->setDistrito($this->company->distrito ?: 'LIMA')
                     ->setUrbanizacion('-')
-                    ->setDireccion('AV. LIMA 123')
-                    ->setCodLocal('0000') // Para GRE, código de local
+                    ->setDireccion($this->company->direccion ?: 'AV. PRINCIPAL S/N')
+                    ->setCodLocal(isset($this->company->cod_local) && !empty($this->company->cod_local) ? $this->company->cod_local : '0000')
                 );
 
         return $company;

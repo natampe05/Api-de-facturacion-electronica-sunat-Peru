@@ -585,28 +585,8 @@ class DocumentService
 
     protected function convertNumberToWords(float $numero, string $moneda): string
     {
-        $monedaName = $moneda === 'PEN' ? 'SOLES' : 'DÓLARES AMERICANOS';
-        $entero = intval($numero);
-        $decimales = intval(($numero - $entero) * 100);
-        
-        // Esta es una implementación básica, se puede mejorar con una librería
-        $letras = $this->numeroALetras($entero);
-        
-        return strtoupper($letras . ' CON ' . sprintf('%02d', $decimales) . '/100 ' . $monedaName);
-    }
-
-    protected function numeroALetras($numero): string
-    {
-        // Implementación básica - se puede reemplazar con una librería más completa
-        if ($numero == 0) return 'CERO';
-        
-        $unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
-        $decenas = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
-        $especiales = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
-        
-        // Esta es una implementación muy básica
-        // En producción se debe usar una librería completa
-        return 'NÚMERO EN LETRAS'; // Placeholder
+        // Delegar a la implementación completa que soporta hasta millones
+        return $this->convertirNumeroALetras($numero, $moneda);
     }
 
     protected function prepareDocumentData($document, string $documentType): array
@@ -1579,14 +1559,27 @@ class DocumentService
                 throw new Exception("No se pudo cargar el certificado");
             }
             
+            // Obtener credenciales GRE de la configuración de la empresa
+            $company = $guide->company;
+            
+            if (!$company->hasGreCredentials()) {
+                throw new Exception("Las credenciales GRE no están configuradas para la empresa: {$company->razon_social}");
+            }
+            
+            $clientId = $company->getGreClientId();
+            $clientSecret = $company->getGreClientSecret();
+            $rucProveedor = $company->getGreRucProveedor();
+            $usuarioSol = $company->getGreUsuarioSol();
+            $claveSol = $company->getGreClaveSol();
+            
             $api->setBuilderOptions([
                 'strict_variables' => true,
                 'optimizations' => 0,
                 'debug' => true,
                 'cache' => false,
             ])
-            ->setApiCredentials('test-85e5b0ae-255c-4891-a595-0b98c65c9854', 'test-Hty/M6QshYvPgItX2P0+Kw==')
-            ->setClaveSOL('20161515648', 'MODDATOS', 'MODDATOS')
+            ->setApiCredentials($clientId, $clientSecret)
+            ->setClaveSOL($rucProveedor, $usuarioSol, $claveSol)
             ->setCertificate($certificadoContent);
             
             Log::info("Consultando estado en SUNAT...");

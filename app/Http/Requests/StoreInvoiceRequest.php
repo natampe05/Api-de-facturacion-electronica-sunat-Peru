@@ -98,6 +98,34 @@ class StoreInvoiceRequest extends FormRequest
             if (!$branch) {
                 $validator->errors()->add('branch_id', 'La sucursal no pertenece a la empresa seleccionada.');
             }
+
+            // === VALIDACIONES SUNAT PARA FACTURA (01) ===
+            
+            // Factura SUNAT exige tipo_documento = 6 (RUC)
+            $tipoDoc = $this->input('client.tipo_documento');
+            $numDoc = $this->input('client.numero_documento');
+            $razonSocial = $this->input('client.razon_social');
+
+            if ($tipoDoc !== '6') {
+                $validator->errors()->add('client.tipo_documento', 'Las facturas electrónicas requieren RUC del cliente (tipo documento 6).');
+            }
+
+            // RUC debe ser exactamente 11 dígitos numéricos
+            if ($tipoDoc === '6' && !preg_match('/^\d{11}$/', $numDoc)) {
+                $validator->errors()->add('client.numero_documento', 'El RUC debe tener exactamente 11 dígitos numéricos.');
+            }
+
+            // Bloquear razón social genérica para facturas
+            $razonSocialLower = strtolower(trim($razonSocial ?? ''));
+            if (in_array($razonSocialLower, ['cliente genérico', 'cliente generico', 'clientes varios', ''])) {
+                $validator->errors()->add('client.razon_social', 'La factura electrónica requiere la razón social real del cliente.');
+            }
+
+            // Validar prefijo de serie: Facturas deben iniciar con F
+            $serie = $this->input('serie');
+            if ($serie && !preg_match('/^F\d{3}$/', $serie)) {
+                $validator->errors()->add('serie', 'La serie de factura debe iniciar con F seguida de 3 dígitos (ej: F001).');
+            }
         });
     }
 
