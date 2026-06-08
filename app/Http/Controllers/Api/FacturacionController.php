@@ -301,7 +301,7 @@ class FacturacionController extends Controller
                 'mto_igv' => $mtoIgv,
                 'total_impuestos' => $totalImpuestos,
                 'valor_venta' => $valorVenta,
-                'sub_total' => $valorVenta,
+                'sub_total' => $mtoImpVenta,
                 'mto_imp_venta' => $mtoImpVenta,
                 'detalles' => $detalles,
                 'descuentos' => $descuentos,
