@@ -883,49 +883,64 @@ class FacturacionController extends Controller
     /**
      * Determinar el estado real de SUNAT basado en el código del CDR.
      * - Código 0: Aceptado sin observaciones
+     * - Código 1033: Ya fue registrado previamente (tratar como aceptado)
      * - Código 4xxx: Aceptado con observaciones (warnings)
      * - Código 2xxx/3xxx: Rechazado
      * - Sin CDR o error de comunicación: error
      */
     protected function determineSunatEstado(array $result, string $sunatMensaje): string
     {
-        if (!$result['success']) {
-            return 'rechazado';
-        }
-
-        // Si hay CDR response, analizar el código
-        if ($result['cdr_response']) {
-            $cdrCode = null;
+        // Extraer código numérico del CDR response o del mensaje de error
+        $cdrCode = null;
+        
+        if ($result['success'] && $result['cdr_response']) {
             if (method_exists($result['cdr_response'], 'getCode')) {
                 $cdrCode = (string) $result['cdr_response']->getCode();
             }
+        }
+        
+        // Fallback: extraer código del mensaje (funciona tanto para éxito como error)
+        if (!$cdrCode && preg_match('/\b(\d{4})\s*-/', $sunatMensaje, $matches)) {
+            $cdrCode = $matches[1];
+        }
+        if (!$cdrCode && preg_match('/\[(\d{4})\]/', $sunatMensaje, $matches)) {
+            $cdrCode = $matches[1];
+        }
 
-            // También extraer código del mensaje como fallback
-            if (!$cdrCode && preg_match('/^(\d{4})\s*-/', $sunatMensaje, $matches)) {
-                $cdrCode = $matches[1];
-            }
-
-            if ($cdrCode) {
-                $prefix = substr($cdrCode, 0, 1);
-                if ($prefix === '2' || $prefix === '3') {
-                    return 'rechazado';
-                }
-                if ($prefix === '4') {
-                    return 'aceptado_observaciones';
-                }
-            }
-
-            // Fallback: revisar texto del mensaje para detectar rechazos
-            $msgLower = strtolower($sunatMensaje);
-            if (str_contains($msgLower, 'rechazad')) {
-                return 'rechazado';
-            }
-            if (str_contains($msgLower, 'observacion')) {
+        if ($cdrCode) {
+            // 1033 = "comprobante registrado previamente" → ya fue aceptado antes
+            if ($cdrCode === '1033') {
                 return 'aceptado_observaciones';
+            }
+            
+            $prefix = substr($cdrCode, 0, 1);
+            
+            if ($prefix === '0' || $prefix === '1') {
+                // Códigos 0xxx y otros 1xxx = aceptado
+                return 'enviado';
+            }
+            if ($prefix === '4') {
+                return 'aceptado_observaciones';
+            }
+            if ($prefix === '2' || $prefix === '3') {
+                return 'rechazado';
             }
         }
 
-        return 'enviado';
+        // Sin código numérico, usar heurísticas del texto
+        $msgLower = strtolower($sunatMensaje);
+        if (str_contains($msgLower, 'registrado previamente') || str_contains($msgLower, 'registrada previamente')) {
+            return 'aceptado_observaciones';
+        }
+        if (str_contains($msgLower, 'rechazad')) {
+            return 'rechazado';
+        }
+        if (str_contains($msgLower, 'observacion')) {
+            return 'aceptado_observaciones';
+        }
+
+        // Default basado en resultado de Greenter
+        return $result['success'] ? 'enviado' : 'rechazado';
     }
     
     protected function convertNumberToWords(float $numero, string $moneda): string
