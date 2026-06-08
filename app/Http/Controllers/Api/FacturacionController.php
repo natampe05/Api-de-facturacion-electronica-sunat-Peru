@@ -234,6 +234,8 @@ class FacturacionController extends Controller
                 ];
             }
             
+            $totalImpuestos = $mtoIgv;
+            
             $descuentoMonto = (float)($orden->descuento_monto ?? 0);
             $descuentos = [];
             
@@ -331,7 +333,7 @@ class FacturacionController extends Controller
             
             // Guardar en almacenamiento local (fallback)
             $docObj = new SunatDocument();
-            $docObj->fecha_emision = $orden->created_at;
+            $docObj->fecha_emision = \Carbon\Carbon::parse($orden->created_at)->setTimezone('America/Lima')->toDateString();
             $docObj->numero_completo = $numeroCompleto;
             $docObj->tipo_documento = $orden->tipo_comprobante === 'factura' ? '01' : '03';
             
@@ -648,6 +650,8 @@ class FacturacionController extends Controller
                     'mto_precio_unitario' => $mtoPrecioUnitario
                 ];
             }
+
+            $totalImpuestos = $mtoIgv;
 
             $descuentoMonto = (float)($orden->descuento_monto ?? 0);
             $descuentos = [];
@@ -1027,7 +1031,7 @@ class FacturacionController extends Controller
             // SUNAT exige agrupar los resúmenes diarios por la fecha de emisión del comprobante
             $boletasByDate = [];
             foreach ($boletas as $boleta) {
-                $dateKey = date('Y-m-d', strtotime($boleta->created_at));
+                $dateKey = \Carbon\Carbon::parse($boleta->created_at)->setTimezone('America/Lima')->toDateString();
                 $boletasByDate[$dateKey][] = $boleta;
             }
             
@@ -1335,7 +1339,7 @@ class FacturacionController extends Controller
         $igvCalculado = $totalTaxable - $opGravadas;
         $totalPagar = (float)($orden->total ?? ($totalTaxable + $propina));
 
-        $now = new \DateTime($orden->created_at);
+        $now = \Carbon\Carbon::parse($orden->created_at)->setTimezone('America/Lima');
         $fechaEmision = $now->format('d/m/Y H:i');
 
         // 4. Construir el HTML
