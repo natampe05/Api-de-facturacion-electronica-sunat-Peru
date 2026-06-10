@@ -486,7 +486,7 @@ class GreenterService
         
         foreach ($detalles as $detalle) {
             $item = new SaleDetail();
-            $item->setCodProducto($detalle['codigo'])
+            $item->setCodProducto(substr($detalle['codigo'], 0, 30))
                 ->setUnidad($detalle['unidad'])
                 ->setDescripcion($detalle['descripcion'])
                 ->setCantidad($detalle['cantidad'])
@@ -1078,7 +1078,7 @@ class GreenterService
             $detail->setCantidad($detalleData['cantidad'])
                    ->setUnidad($detalleData['unidad'])
                    ->setDescripcion($detalleData['descripcion'])
-                   ->setCodigo($detalleData['codigo']);
+                   ->setCodigo(substr($detalleData['codigo'], 0, 30));
 
             if (isset($detalleData['codigo_sunat'])) {
                 $detail->setCodProdSunat($detalleData['codigo_sunat']);
