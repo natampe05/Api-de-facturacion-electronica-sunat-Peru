@@ -205,19 +205,21 @@ class FacturacionController extends Controller
                     continue;
                 }
                 
+                $totalLineaConIgv = round($precioConIgv * $cantidad, 2);
+                
                 if ($porcentajeIgv > 0) {
-                    $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
-                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
-                    $igv = round($mtoValorVenta * ($porcentajeIgv / 100), 2);
+                    $mtoValorVenta = round($totalLineaConIgv / (1 + ($porcentajeIgv / 100)), 2);
+                    $igv = round($totalLineaConIgv - $mtoValorVenta, 2);
+                    $mtoValorUnitario = round($mtoValorVenta / $cantidad, 4);
                     $totalImpuestos = $igv;
-                    $mtoPrecioUnitario = round(($mtoValorVenta + $igv) / $cantidad, 2);
+                    $mtoPrecioUnitario = round($totalLineaConIgv / $cantidad, 2);
                     $tipAfeIgv = '10'; // Gravado - Operación Onerosa
                 } else {
-                    $mtoValorUnitario = round($precioConIgv, 4);
-                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
+                    $mtoValorVenta = $totalLineaConIgv;
+                    $mtoValorUnitario = round($mtoValorVenta / $cantidad, 4);
                     $igv = 0.00;
                     $totalImpuestos = 0.00;
-                    $mtoPrecioUnitario = round($precioConIgv, 2);
+                    $mtoPrecioUnitario = round($totalLineaConIgv / $cantidad, 2);
                     $tipAfeIgv = '20'; // Exonerado - Operación Onerosa
                 }
                 
@@ -632,19 +634,21 @@ class FacturacionController extends Controller
                     continue;
                 }
                 
+                $totalLineaConIgv = round($precioConIgv * $cantidad, 2);
+                
                 if ($porcentajeIgv > 0) {
-                    $mtoValorUnitario = round($precioConIgv / (1 + ($porcentajeIgv / 100)), 4);
-                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
-                    $igv = round($mtoValorVenta * ($porcentajeIgv / 100), 2);
+                    $mtoValorVenta = round($totalLineaConIgv / (1 + ($porcentajeIgv / 100)), 2);
+                    $igv = round($totalLineaConIgv - $mtoValorVenta, 2);
+                    $mtoValorUnitario = round($mtoValorVenta / $cantidad, 4);
                     $totalImpuestos = $igv;
-                    $mtoPrecioUnitario = round(($mtoValorVenta + $igv) / $cantidad, 2);
+                    $mtoPrecioUnitario = round($totalLineaConIgv / $cantidad, 2);
                     $tipAfeIgv = '10'; // Gravado
                 } else {
-                    $mtoValorUnitario = round($precioConIgv, 4);
-                    $mtoValorVenta = round($cantidad * $mtoValorUnitario, 2);
+                    $mtoValorVenta = $totalLineaConIgv;
+                    $mtoValorUnitario = round($mtoValorVenta / $cantidad, 4);
                     $igv = 0.00;
                     $totalImpuestos = 0.00;
-                    $mtoPrecioUnitario = round($precioConIgv, 2);
+                    $mtoPrecioUnitario = round($totalLineaConIgv / $cantidad, 2);
                     $tipAfeIgv = '20'; // Exonerado
                 }
                 
