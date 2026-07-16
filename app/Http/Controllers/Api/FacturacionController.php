@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Services\GreenterService;
 use App\Services\FileService;
+use App\Services\SunatCorrelativeService;
+use App\Services\SunatSecretService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -44,10 +46,18 @@ class SunatDocument
 class FacturacionController extends Controller
 {
     protected FileService $fileService;
+    protected SunatCorrelativeService $correlativeService;
+    protected SunatSecretService $secretService;
     
-    public function __construct(FileService $fileService)
+    public function __construct(
+        FileService $fileService,
+        SunatCorrelativeService $correlativeService,
+        SunatSecretService $secretService
+    )
     {
         $this->fileService = $fileService;
+        $this->correlativeService = $correlativeService;
+        $this->secretService = $secretService;
     }
     
     public function facturar(Request $request)
@@ -122,40 +132,41 @@ class FacturacionController extends Controller
                     : ($empresa->sunat_serie_boleta ?: 'B001');
             }
             
-            $numero = $orden->comprobante_numero;
-            $fechaPago = null;
-            if (!$numero) {
-                $maxNumero = DB::table('ordenes')
-                    ->where('empresa_id', $empresa->id)
-                    ->where('tipo_comprobante', $orden->tipo_comprobante)
-                    ->where('comprobante_serie', $serie)
-                    ->max('comprobante_numero');
-                $startNumero = $orden->tipo_comprobante === 'factura' 
-                    ? ($empresa->sunat_iniciar_factura ?? 1) 
-                    : ($empresa->sunat_iniciar_boleta ?? 1);
-                
-                $numero = ($maxNumero ? max($maxNumero, $startNumero - 1) : ($startNumero - 1)) + 1;
-                $fechaPago = now('UTC');
+            $startNumero = $orden->tipo_comprobante === 'factura'
+                ? ($empresa->sunat_iniciar_factura ?? 1)
+                : ($empresa->sunat_iniciar_boleta ?? 1);
+            $reservation = $this->correlativeService->reserveForOrder(
+                (string) $ordenId,
+                (string) $empresa->id,
+                (string) $orden->tipo_comprobante,
+                (string) $serie,
+                (int) $startNumero
+            );
+
+            if ($reservation['already_sent']) {
+                return response()->json([
+                    'success' => true,
+                    'comprobante' => $reservation['series'] . '-' . str_pad($reservation['number'], 8, '0', STR_PAD_LEFT),
+                    'message' => 'El comprobante ya fue enviado previamente.'
+                ]);
             }
+
+            if ($reservation['busy']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El comprobante ya está siendo procesado. Intenta nuevamente en unos segundos.'
+                ], 409);
+            }
+
+            $serie = $reservation['series'];
+            $numero = $reservation['number'];
+            $orden->comprobante_serie = $serie;
+            $orden->comprobante_numero = $numero;
+            $orden->created_at = now('UTC')->toIso8601String();
             
             $numeroCompleto = $serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT);
 
             // Actualizar la orden de inmediato en la base de datos con la serie y número
-            $updateData = [
-                'comprobante_serie' => $serie,
-                'comprobante_numero' => $numero,
-                'updated_at' => now('UTC')->toIso8601String()
-            ];
-            
-            if ($fechaPago) {
-                $updateData['created_at'] = $fechaPago->toIso8601String();
-                $orden->created_at = $fechaPago->toIso8601String();
-            }
-
-            DB::table('ordenes')
-                ->where('id', $ordenId)
-                ->update($updateData);
-            
             // 5. Instanciar y configurar la empresa virtual para Greenter
             $sucursal = null;
             if (!empty($orden->sucursal_id)) {
@@ -163,6 +174,7 @@ class FacturacionController extends Controller
             }
 
             $company = new SunatCompany();
+            $sunatSecrets = $this->secretService->forEmpresa((string) $empresa->id, $empresa);
             $company->ruc = $empresa->ruc ?: '20000000001';
             $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
             $company->nombre_comercial = $empresa->nombre;
@@ -173,9 +185,9 @@ class FacturacionController extends Controller
             $company->provincia = $sucursal && !empty($sucursal->provincia) ? $sucursal->provincia : ($empresa->provincia ?: 'LIMA');
             $company->distrito = $sucursal && !empty($sucursal->distrito) ? $sucursal->distrito : ($empresa->distrito ?: 'LIMA');
             $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
-            $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
-            $company->certificado_pem = $empresa->sunat_certificado_pem;
-            $company->certificado_password = $empresa->sunat_certificado_password;
+            $company->clave_sol = $sunatSecrets['sunat_clave_sol'] ?: 'MODDATOS';
+            $company->certificado_pem = $sunatSecrets['sunat_certificado_pem'];
+            $company->certificado_password = $sunatSecrets['sunat_certificado_password'];
             $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
             // Escribir certificado a disco
             if ($company->certificado_pem) {
@@ -359,7 +371,9 @@ class FacturacionController extends Controller
                 ->update([
                     'comprobante_serie' => $serie,
                     'comprobante_numero' => $numero,
-                    'sunat_estado' => 'pendiente', // Cambiará a 'enviado' o 'error' en segundo plano
+                    'sunat_estado' => ($request->input('solo_firmar') || $request->query('solo_firmar'))
+                        ? 'pendiente'
+                        : 'procesando',
                     'sunat_hash' => $sunatHash,
                     'sunat_xml_url' => $xmlBase64,
                     'updated_at' => now('UTC')->toIso8601String()
@@ -546,14 +560,13 @@ class FacturacionController extends Controller
                 ? 'FC' . substr($serieOriginal, 2) 
                 : 'BC' . substr($serieOriginal, 2);
 
-            $maxNumero = DB::table('ordenes')
-                ->where('empresa_id', $empresa->id)
-                ->where('tipo_comprobante', 'nota_credito')
-                ->where('comprobante_serie', $serieNota)
-                ->max('comprobante_numero');
-
             $startNumero = $empresa->sunat_iniciar_nota_credito ?? 1;
-            $numeroNota = ($maxNumero ? max($maxNumero, $startNumero - 1) : ($startNumero - 1)) + 1;
+            $numeroNota = $this->correlativeService->reserveNumber(
+                (string) $empresa->id,
+                'nota_credito',
+                $serieNota,
+                (int) $startNumero
+            );
             $numeroCompletoNota = $serieNota . '-' . str_pad($numeroNota, 8, '0', STR_PAD_LEFT);
 
             // 4. Crear cliente para Greenter
@@ -593,6 +606,7 @@ class FacturacionController extends Controller
             }
 
             $company = new SunatCompany();
+            $sunatSecrets = $this->secretService->forEmpresa((string) $empresa->id, $empresa);
             $company->ruc = $empresa->ruc ?: '20000000001';
             $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
             $company->nombre_comercial = $empresa->nombre;
@@ -603,9 +617,9 @@ class FacturacionController extends Controller
             $company->provincia = $sucursal && !empty($sucursal->provincia) ? $sucursal->provincia : ($empresa->provincia ?: 'LIMA');
             $company->distrito = $sucursal && !empty($sucursal->distrito) ? $sucursal->distrito : ($empresa->distrito ?: 'LIMA');
             $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
-            $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
-            $company->certificado_pem = $empresa->sunat_certificado_pem;
-            $company->certificado_password = $empresa->sunat_certificado_password;
+            $company->clave_sol = $sunatSecrets['sunat_clave_sol'] ?: 'MODDATOS';
+            $company->certificado_pem = $sunatSecrets['sunat_certificado_pem'];
+            $company->certificado_password = $sunatSecrets['sunat_certificado_password'];
             $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
 
             if ($company->certificado_pem) {
@@ -1127,6 +1141,7 @@ class FacturacionController extends Controller
 
             
             $company = new SunatCompany();
+            $sunatSecrets = $this->secretService->forEmpresa((string) $empresa->id, $empresa);
             $company->ruc = $empresa->ruc ?: '20000000001';
             $company->razon_social = $empresa->razon_social ?: $empresa->nombre;
             $company->nombre_comercial = $empresa->nombre;
@@ -1137,9 +1152,9 @@ class FacturacionController extends Controller
             $company->provincia = $empresa->provincia ?: 'LIMA';
             $company->distrito = $empresa->distrito ?: 'LIMA';
             $company->usuario_sol = $empresa->sunat_usuario_sol ?: 'MODDATOS';
-            $company->clave_sol = $empresa->sunat_clave_sol ?: 'MODDATOS';
-            $company->certificado_pem = $empresa->sunat_certificado_pem;
-            $company->certificado_password = $empresa->sunat_certificado_password;
+            $company->clave_sol = $sunatSecrets['sunat_clave_sol'] ?: 'MODDATOS';
+            $company->certificado_pem = $sunatSecrets['sunat_certificado_pem'];
+            $company->certificado_password = $sunatSecrets['sunat_certificado_password'];
             $company->modo_produccion = (bool)($empresa->sunat_modo_produccion ?? false);
 
             if ($company->certificado_pem) {

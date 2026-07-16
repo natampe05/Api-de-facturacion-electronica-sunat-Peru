@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'supabase' => [
+        'url' => env('SUPABASE_URL', env('VITE_SUPABASE_URL')),
+        'anon_key' => env('SUPABASE_ANON_KEY', env('VITE_SUPABASE_ANON_KEY')),
+    ],
+
+    'sunat' => [
+        'internal_api_key' => env('SUNAT_INTERNAL_API_KEY'),
+    ],
+
 ];

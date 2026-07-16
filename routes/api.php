@@ -21,13 +21,24 @@ use App\Http\Controllers\Api\FacturacionController;
 // ========================
 
 // Facturación electrónica SUNAT
-Route::post('/facturar', [FacturacionController::class, 'facturar']);
-Route::post('/anular-comprobante', [FacturacionController::class, 'anularComprobante']);
-Route::post('/resumen-diario', [FacturacionController::class, 'enviarResumenDiario']);
-Route::get('/comprobantes/{id}/xml', [FacturacionController::class, 'downloadXmlPublic']);
-Route::get('/comprobantes/{id}/cdr', [FacturacionController::class, 'downloadCdrPublic']);
-Route::get('/comprobantes/{id}/pdf', [FacturacionController::class, 'downloadPdfPublic']);
-Route::get('/run-storage-link', function() {
+Route::middleware('supabase.auth')->group(function () {
+    Route::post('/facturar', [FacturacionController::class, 'facturar'])
+        ->middleware(['sunat.tenant:operate', 'throttle:sunat-operations']);
+    Route::post('/anular-comprobante', [FacturacionController::class, 'anularComprobante'])
+        ->middleware(['sunat.tenant:void', 'throttle:sunat-operations']);
+    Route::post('/resumen-diario', [FacturacionController::class, 'enviarResumenDiario'])
+        ->middleware(['sunat.tenant:summary', 'throttle:sunat-operations']);
+
+    Route::prefix('comprobantes/{id}')
+        ->middleware(['sunat.tenant:read', 'throttle:sunat-downloads'])
+        ->group(function () {
+            Route::get('/xml', [FacturacionController::class, 'downloadXmlPublic']);
+            Route::get('/cdr', [FacturacionController::class, 'downloadCdrPublic']);
+            Route::get('/pdf', [FacturacionController::class, 'downloadPdfPublic']);
+        });
+});
+Route::middleware(['supabase.auth', 'sunat.superadmin', 'throttle:sunat-admin'])
+    ->get('/run-storage-link', function() {
     try {
         $output = \Illuminate\Support\Facades\Artisan::call('storage:link');
         return response()->json([
@@ -44,18 +55,20 @@ Route::get('/run-storage-link', function() {
 });
 
 // Información del sistema
-Route::get('/system/info', [AuthController::class, 'systemInfo']);
+Route::get('/system/info', [AuthController::class, 'systemInfo'])
+    ->middleware(['supabase.auth', 'sunat.superadmin', 'throttle:sunat-admin']);
 
 
 // Setup del sistema
-Route::prefix('setup')->group(function () {
+Route::prefix('setup')->middleware(['supabase.auth', 'sunat.superadmin', 'throttle:sunat-admin'])->group(function () {
     Route::post('/migrate', [SetupController::class, 'migrate']);
     Route::post('/seed', [SetupController::class, 'seed']);
     Route::get('/status', [SetupController::class, 'status']);
 });
 
 // Inicialización del sistema
-Route::post('/auth/initialize', [AuthController::class, 'initialize']);
+Route::post('/auth/initialize', [AuthController::class, 'initialize'])
+    ->middleware(['supabase.auth', 'sunat.superadmin', 'throttle:sunat-admin']);
 
 // Autenticación
 Route::post('/auth/login', [AuthController::class, 'login']);
