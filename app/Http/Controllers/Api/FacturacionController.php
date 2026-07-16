@@ -162,7 +162,7 @@ class FacturacionController extends Controller
             $numero = $reservation['number'];
             $orden->comprobante_serie = $serie;
             $orden->comprobante_numero = $numero;
-            $orden->created_at = now('UTC')->toIso8601String();
+            $orden->cobrado_at = ($orden->cobrado_at ?? null) ?: now('UTC')->toIso8601String();
             
             $numeroCompleto = $serie . '-' . str_pad($numero, 8, '0', STR_PAD_LEFT);
 
@@ -304,7 +304,7 @@ class FacturacionController extends Controller
                 'tipo_documento' => $orden->tipo_comprobante === 'factura' ? '01' : '03',
                 'serie' => $serie,
                 'correlativo' => str_pad($numero, 8, '0', STR_PAD_LEFT),
-                'fecha_emision' => \Carbon\Carbon::parse($orden->created_at)->setTimezone('America/Lima')->format('Y-m-d\TH:i:sP'),
+                'fecha_emision' => \Carbon\Carbon::parse($orden->cobrado_at)->setTimezone('America/Lima')->format('Y-m-d\TH:i:sP'),
                 'moneda' => 'PEN',
                 'client' => [
                     'tipo_documento' => $clientDocType,
@@ -353,7 +353,7 @@ class FacturacionController extends Controller
             
             // Guardar en almacenamiento local (fallback)
             $docObj = new SunatDocument();
-            $docObj->fecha_emision = \Carbon\Carbon::parse($orden->created_at)->setTimezone('America/Lima')->toDateString();
+            $docObj->fecha_emision = \Carbon\Carbon::parse($orden->cobrado_at)->setTimezone('America/Lima')->toDateString();
             $docObj->numero_completo = $numeroCompleto;
             $docObj->tipo_documento = $orden->tipo_comprobante === 'factura' ? '01' : '03';
             
@@ -1130,7 +1130,8 @@ class FacturacionController extends Controller
             // SUNAT exige agrupar los resúmenes diarios por la fecha de emisión del comprobante
             $boletasByDate = [];
             foreach ($boletas as $boleta) {
-                $dateKey = \Carbon\Carbon::parse($boleta->created_at)->setTimezone('America/Lima')->toDateString();
+                $fechaCobro = $boleta->cobrado_at ?? $boleta->created_at;
+                $dateKey = \Carbon\Carbon::parse($fechaCobro)->setTimezone('America/Lima')->toDateString();
                 $boletasByDate[$dateKey][] = $boleta;
             }
             
@@ -1442,7 +1443,8 @@ class FacturacionController extends Controller
         $igvCalculado = $totalTaxable - $opGravadas;
         $totalPagar = (float)($orden->total ?? ($totalTaxable + $propina));
 
-        $now = \Carbon\Carbon::parse($orden->created_at)->setTimezone('America/Lima');
+        $fechaCobro = $orden->cobrado_at ?? $orden->created_at;
+        $now = \Carbon\Carbon::parse($fechaCobro)->setTimezone('America/Lima');
         $fechaEmision = $now->format('d/m/Y H:i');
 
         // 4. Construir el HTML
