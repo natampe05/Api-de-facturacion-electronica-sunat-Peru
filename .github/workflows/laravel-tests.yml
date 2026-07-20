@@ -31,7 +31,8 @@ jobs:
           coverage: none
 
       - name: Verify SQLite driver
-        run: php -r "exit(extension_loaded('pdo_sqlite') ? 0 : 1);"
+        run: |
+          php -r "exit(extension_loaded('pdo_sqlite') ? 0 : 1);"
 
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
