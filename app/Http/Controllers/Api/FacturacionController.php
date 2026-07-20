@@ -65,9 +65,21 @@ class FacturacionController extends Controller
         $request->validate([
             'orden_id' => 'required|string',
         ]);
-        
-        $ordenId = $request->input('orden_id');
-        
+
+        return $this->procesarOrden(
+            (string) $request->input('orden_id'),
+            (bool) ($request->input('solo_firmar') || $request->query('solo_firmar')),
+            (bool) ($request->input('solo_enviar') || $request->query('solo_enviar'))
+        );
+    }
+
+    /**
+     * Punto de entrada interno reutilizable por el worker. La autorizacion de
+     * usuarios permanece en la ruta HTTP; el worker solo recibe IDs que ya
+     * fueron reservados en la base de datos.
+     */
+    public function procesarOrden(string $ordenId, bool $soloFirmar = false, bool $soloEnviar = false)
+    {
         try {
             // 1. Obtener la orden de la base de datos
             $orden = DB::table('ordenes')->where('id', $ordenId)->first();
@@ -88,9 +100,16 @@ class FacturacionController extends Controller
             }
             
             // Si el comprobante ya fue enviado y aceptado por SUNAT, no hacer nada más
-            if ($orden->sunat_estado === 'enviado') {
+            if (in_array($orden->sunat_estado, ['enviado', 'aceptado_observaciones'], true)) {
+                DB::table('ordenes')->where('id', $ordenId)->update([
+                    'sunat_processing_at' => null,
+                    'sunat_retry_after' => null,
+                    'sunat_retry_last_error' => null,
+                ]);
+
                 return response()->json([
                     'success' => true,
+                    'estado' => $orden->sunat_estado,
                     'comprobante' => $orden->comprobante_serie . '-' . str_pad($orden->comprobante_numero, 8, '0', STR_PAD_LEFT),
                     'message' => 'El comprobante ya fue enviado previamente.'
                 ]);
@@ -144,8 +163,15 @@ class FacturacionController extends Controller
             );
 
             if ($reservation['already_sent']) {
+                DB::table('ordenes')->where('id', $ordenId)->update([
+                    'sunat_processing_at' => null,
+                    'sunat_retry_after' => null,
+                    'sunat_retry_last_error' => null,
+                ]);
+
                 return response()->json([
                     'success' => true,
+                    'estado' => 'enviado',
                     'comprobante' => $reservation['series'] . '-' . str_pad($reservation['number'], 8, '0', STR_PAD_LEFT),
                     'message' => 'El comprobante ya fue enviado previamente.'
                 ]);
@@ -371,16 +397,18 @@ class FacturacionController extends Controller
                 ->update([
                     'comprobante_serie' => $serie,
                     'comprobante_numero' => $numero,
-                    'sunat_estado' => ($request->input('solo_firmar') || $request->query('solo_firmar'))
+                    'sunat_estado' => $soloFirmar
                         ? 'pendiente'
                         : 'procesando',
+                    'sunat_processing_at' => $soloFirmar ? null : now('UTC'),
+                    'sunat_retry_after' => $soloFirmar ? now('UTC') : null,
                     'sunat_hash' => $sunatHash,
                     'sunat_xml_url' => $xmlBase64,
                     'updated_at' => now('UTC')->toIso8601String()
                 ]);
             
             // Si solo se pidió firmar, retornar de inmediato (<50ms)
-            if ($request->input('solo_firmar') || $request->query('solo_firmar')) {
+            if ($soloFirmar) {
                 return response()->json([
                     'success' => true,
                     'comprobante' => $numeroCompleto,
@@ -439,6 +467,8 @@ class FacturacionController extends Controller
                 
                 // Clasificar el estado real basado en el código del CDR
                 $sunatEstado = $this->determineSunatEstado($result, $sunatMensaje);
+                $sunatAceptado = in_array($sunatEstado, ['enviado', 'aceptado_observaciones'], true);
+                $sunatReintentable = $sunatEstado === 'error';
                 
                 // Actualizar el estado final en Supabase
                 DB::table('ordenes')
@@ -449,6 +479,9 @@ class FacturacionController extends Controller
                         'sunat_mensaje' => $sunatMensaje,
                         'sunat_xml_url' => $xmlBase64,
                         'sunat_cdr_url' => $cdrBase64,
+                        'sunat_processing_at' => null,
+                        'sunat_retry_after' => $sunatReintentable ? now('UTC')->addMinute() : null,
+                        'sunat_retry_last_error' => $sunatReintentable ? mb_substr($sunatMensaje, 0, 1000) : null,
                         'updated_at' => now('UTC')->toIso8601String()
                     ]);
                     
@@ -461,10 +494,13 @@ class FacturacionController extends Controller
                     ->update([
                         'sunat_estado' => 'error',
                         'sunat_mensaje' => 'Error de transmisión: ' . $bgEx->getMessage(),
+                        'sunat_processing_at' => null,
+                        'sunat_retry_after' => now('UTC')->addMinute(),
+                        'sunat_retry_last_error' => mb_substr($bgEx->getMessage(), 0, 1000),
                         'updated_at' => now('UTC')->toIso8601String()
                     ]);
                 
-                if ($request->input('solo_enviar') || $request->query('solo_enviar')) {
+                if ($soloEnviar) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Error de transmisión: ' . $bgEx->getMessage()
@@ -473,11 +509,11 @@ class FacturacionController extends Controller
             }
             
             return response()->json([
-                'success' => isset($sunatEstado) && $sunatEstado === 'enviado',
+                'success' => isset($sunatAceptado) && $sunatAceptado,
                 'comprobante' => $numeroCompleto,
                 'estado' => $sunatEstado ?? 'error',
                 'mensaje' => $sunatMensaje ?? '',
-                'message' => (isset($sunatEstado) && $sunatEstado === 'enviado')
+                'message' => (isset($sunatAceptado) && $sunatAceptado)
                     ? 'Comprobante enviado a SUNAT con éxito.'
                     : 'Error SUNAT: ' . ($sunatMensaje ?? 'No se pudo enviar.')
             ]);
@@ -491,6 +527,9 @@ class FacturacionController extends Controller
                 ->update([
                     'sunat_estado' => 'error',
                     'sunat_mensaje' => 'Error interno: ' . $e->getMessage(),
+                    'sunat_processing_at' => null,
+                    'sunat_retry_after' => now('UTC')->addMinute(),
+                    'sunat_retry_last_error' => mb_substr($e->getMessage(), 0, 1000),
                     'updated_at' => now('UTC')->toIso8601String()
                 ]);
                 
@@ -971,8 +1010,10 @@ class FacturacionController extends Controller
             return 'aceptado_observaciones';
         }
 
-        // Default basado en resultado de Greenter
-        return $result['success'] ? 'enviado' : 'rechazado';
+        // Un fallo sin codigo de rechazo es normalmente transporte, timeout o
+        // indisponibilidad. Debe reintentarse; solo los rechazos explicitos
+        // 2xxx/3xxx o el texto "rechazado" son terminales.
+        return $result['success'] ? 'enviado' : 'error';
     }
     
     protected function convertNumberToWords(float $numero, string $moneda): string

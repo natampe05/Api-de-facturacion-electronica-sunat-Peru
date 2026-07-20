@@ -40,7 +40,7 @@ class SunatCorrelativeService
                 throw new \RuntimeException('La orden no existe o no pertenece a la empresa.');
             }
 
-            if ($order->sunat_estado === 'enviado') {
+            if (in_array($order->sunat_estado, ['enviado', 'aceptado_observaciones'], true)) {
                 return [
                     'already_sent' => true,
                     'busy' => false,
