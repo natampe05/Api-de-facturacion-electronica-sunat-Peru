@@ -6,7 +6,7 @@ use App\Models\Company;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Company>
+ * @extends Factory<Company>
  */
 class CompanyFactory extends Factory
 {
@@ -25,7 +25,7 @@ class CompanyFactory extends Factory
     public function definition(): array
     {
         return [
-            'ruc' => '20' . fake()->unique()->numerify('#########'),
+            'ruc' => '20'.fake()->unique()->numerify('#########'),
             'razon_social' => fake()->company(),
             'nombre_comercial' => 'EMPRESA PRUEBA',
             'direccion' => 'AV. EJEMPLO 123',
@@ -46,7 +46,6 @@ MIICertificateDataForTesting
             'endpoint_produccion' => 'https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService',
             'modo_produccion' => false,
             'logo_path' => null,
-            'configuraciones' => null,
             'activo' => true,
         ];
     }

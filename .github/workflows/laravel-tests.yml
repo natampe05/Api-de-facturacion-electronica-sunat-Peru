@@ -1,0 +1,43 @@
+name: Laravel tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laravel-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit and Feature tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: curl, dom, fileinfo, intl, mbstring, openssl, pdo_sqlite, sqlite3
+          coverage: none
+
+      - name: Verify SQLite driver
+        run: php -r "exit(extension_loaded('pdo_sqlite') ? 0 : 1);"
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run Unit tests
+        run: php artisan test --testsuite=Unit
+
+      - name: Run active Feature tests
+        run: php artisan test --testsuite=Feature
