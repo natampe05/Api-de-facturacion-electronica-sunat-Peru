@@ -53,3 +53,14 @@ it('provides an artisan command that verifies the configured alert channel', fun
 
     Notification::assertSentOnDemandTimes(OperationsHealthAlert::class, 1);
 });
+
+it('sends the completed-work message through the safe artisan option', function () {
+    $this->artisan('operations:test-alert --completed')
+        ->expectsOutputToContain('Aviso de trabajo terminado enviado')
+        ->assertSuccessful();
+
+    Notification::assertSentOnDemand(
+        OperationsHealthAlert::class,
+        fn ($notification) => $notification->title === 'Ya terminé el trabajo pendiente',
+    );
+});
