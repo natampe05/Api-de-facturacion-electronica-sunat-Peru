@@ -7,6 +7,8 @@ return [
     'lease_seconds' => (int) env('SUNAT_WORKER_LEASE_SECONDS', 300),
     'stale_processing_seconds' => (int) env('SUNAT_WORKER_STALE_PROCESSING_SECONDS', 300),
     'max_attempts' => (int) env('SUNAT_WORKER_MAX_ATTEMPTS', 10),
+    'alert_queue_depth' => (int) env('SUNAT_WORKER_ALERT_QUEUE_DEPTH', 100),
+    'alert_oldest_minutes' => (int) env('SUNAT_WORKER_ALERT_OLDEST_MINUTES', 15),
     'backoff_seconds' => array_values(array_filter(array_map(
         'intval',
         explode(',', (string) env('SUNAT_WORKER_BACKOFF_SECONDS', '60,180,600,1800,3600,10800'))

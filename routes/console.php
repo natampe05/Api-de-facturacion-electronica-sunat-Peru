@@ -13,4 +13,9 @@ if (config('sunat_worker.enabled', true)) {
         ->everyMinute()
         ->onOneServer()
         ->withoutOverlapping(5);
+
+    Schedule::command('sunat:check-health --quiet')
+        ->everyFiveMinutes()
+        ->onOneServer()
+        ->withoutOverlapping(5);
 }
