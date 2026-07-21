@@ -2,17 +2,20 @@
 
 namespace App\Console\Commands;
 
+use App\Services\OperationsAlertService;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class CheckSunatQueueHealth extends Command
 {
     protected $signature = 'sunat:check-health';
 
-    protected $description = 'Detecta trabajos SUNAT agotados o una cola fiscal atrasada';
+    protected $description = 'Detecta trabajos SUNAT agotados, una cola fiscal atrasada o presión de conexiones';
 
-    public function handle(): int
+    public function handle(OperationsAlertService $alerts): int
     {
         if (! config('sunat_worker.enabled', true)) {
             return self::SUCCESS;
@@ -52,19 +55,116 @@ class CheckSunatQueueHealth extends Command
             'exhausted_order_ids' => $exhaustedIds,
         ];
 
+        $exitCode = self::SUCCESS;
+
         if ($exhaustedIds !== []) {
             Log::critical('Existen trabajos SUNAT con reintentos agotados.', $context);
+            $alerts->notify(
+                'sunat-exhausted',
+                'critical',
+                'SUNAT tiene trabajos con reintentos agotados',
+                $context,
+            );
             $this->components->error('SUNAT tiene trabajos con reintentos agotados.');
-
-            return self::FAILURE;
+            $exitCode = self::FAILURE;
         }
 
-        if ($queueDepth >= $depthThreshold || $oldestMinutes >= $oldestThresholdMinutes) {
+        if ($exhaustedIds === [] && ($queueDepth >= $depthThreshold || $oldestMinutes >= $oldestThresholdMinutes)) {
             Log::warning('La cola SUNAT supera el umbral operativo.', $context);
+            $alerts->notify(
+                'sunat-queue-delayed',
+                'warning',
+                'La cola SUNAT supera el umbral operativo',
+                $context,
+            );
             $this->components->warn('La cola SUNAT supera el umbral operativo.');
         }
 
-        return self::SUCCESS;
+        $this->checkDatabaseConnections($alerts);
+        $this->sendStagingReviewReminder($alerts);
+
+        return $exitCode;
+    }
+
+    private function checkDatabaseConnections(OperationsAlertService $alerts): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        try {
+            $usage = DB::selectOne(<<<'SQL'
+                select
+                    count(*)::int as active_connections,
+                    current_setting('max_connections')::int as max_connections
+                from pg_stat_activity
+                SQL);
+
+            $active = (int) ($usage->active_connections ?? 0);
+            $maximum = max((int) ($usage->max_connections ?? 0), 1);
+            $percent = round(($active / $maximum) * 100, 2);
+            $warning = max((int) config('operations.db_connections_warning_percent', 70), 1);
+            $critical = max((int) config('operations.db_connections_critical_percent', 85), $warning);
+
+            if ($percent < $warning) {
+                return;
+            }
+
+            $severity = $percent >= $critical ? 'critical' : 'warning';
+            $context = [
+                'conexiones_actuales' => $active,
+                'conexiones_maximas' => $maximum,
+                'porcentaje_usado' => $percent.'%',
+                'umbral_warning' => $warning.'%',
+                'umbral_critical' => $critical.'%',
+            ];
+
+            Log::log($severity, 'El uso de conexiones PostgreSQL supera el umbral operativo.', $context);
+            $alerts->notify(
+                'database-connections-'.$severity,
+                $severity,
+                'PostgreSQL supera el umbral de conexiones',
+                $context,
+            );
+        } catch (Throwable $exception) {
+            Log::warning('No se pudo medir el uso de conexiones PostgreSQL.', [
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function sendStagingReviewReminder(OperationsAlertService $alerts): void
+    {
+        $reviewAt = trim((string) config('operations.staging_review_at'));
+
+        if ($reviewAt === '') {
+            return;
+        }
+
+        try {
+            $reviewDate = CarbonImmutable::parse($reviewAt)->utc();
+        } catch (Throwable $exception) {
+            Log::warning('OPERATIONS_STAGING_REVIEW_AT no tiene una fecha válida.', [
+                'value' => $reviewAt,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
+        if (now('UTC')->isBefore($reviewDate)) {
+            return;
+        }
+
+        $alerts->notify(
+            'staging-review-'.$reviewDate->format('YmdHi'),
+            'info',
+            'Es momento de revisar y retirar el staging temporal',
+            [
+                'fecha_programada_utc' => $reviewDate->toIso8601String(),
+                'criterio' => 'retirar si los SLO se cumplieron durante una hora pico y no hubo errores ni duplicados SUNAT',
+            ],
+            60 * 24 * 365,
+        );
     }
 }
-

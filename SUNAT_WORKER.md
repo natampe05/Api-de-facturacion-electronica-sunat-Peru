@@ -50,3 +50,21 @@ php artisan queue:failed
 ```
 
 Los parámetros de lote, lease, máximo de intentos y backoff están documentados en `.env.example`.
+
+## Alertas operativas por correo
+
+`sunat:check-health` también revisa el porcentaje de conexiones PostgreSQL y puede enviar un recordatorio único para retirar un staging temporal. Las alertas repetidas se agrupan durante el tiempo configurado para evitar spam.
+
+Configurar en Laravel Cloud, como variables privadas del entorno:
+
+```dotenv
+OPERATIONS_ALERT_EMAIL=
+OPERATIONS_ALERT_COOLDOWN_MINUTES=60
+OPERATIONS_DB_CONNECTIONS_WARNING_PERCENT=70
+OPERATIONS_DB_CONNECTIONS_CRITICAL_PERCENT=85
+OPERATIONS_STAGING_REVIEW_AT=
+```
+
+El destinatario no debe guardarse en Git. Además debe configurarse un transporte real de Laravel Mail (`smtp`, `postmark`, `resend`, etc.); los transportes `log` y `array` no envían correos. Si el transporte falla, el siguiente ciclo podrá reintentar la alerta.
+
+Después de configurar el transporte, comprobarlo con `php artisan operations:test-alert`.
