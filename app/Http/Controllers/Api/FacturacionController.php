@@ -837,6 +837,9 @@ class FacturacionController extends Controller
                 'cliente_id' => $orden->cliente_id,
                 'mesa_id' => $orden->mesa_id,
                 'cajero_id' => $orden->cajero_id,
+                'mesero_id' => $orden->mesero_id,
+                'sucursal_id' => $orden->sucursal_id,
+                'orden_origen_id' => $orden->id,
                 'tipo_orden' => $orden->tipo_orden,
                 'estado' => 'pagada', // nota_credito activa/emitida
                 'tipo_comprobante' => 'nota_credito',
@@ -846,9 +849,13 @@ class FacturacionController extends Controller
                 'total' => -$orden->total,
                 'igv_monto' => -$orden->igv_monto,
                 'descuento_monto' => -$orden->descuento_monto,
+                'propina' => -abs((float) ($orden->propina ?? 0)),
+                'propina_metodo' => $orden->propina_metodo,
+                'costo_delivery' => -abs((float) ($orden->costo_delivery ?? 0)),
                 'items' => is_string($orden->items) ? $orden->items : json_encode($orden->items),
                 'cliente_nombre' => $orden->cliente_nombre,
                 'metodo_pago' => $orden->metodo_pago,
+                'pago_mixto_detalle' => $orden->pago_mixto_detalle,
                 'notas' => $motivo,
                 'sunat_estado' => 'pendiente',
                 'sunat_hash' => $sunatHash,
@@ -856,6 +863,9 @@ class FacturacionController extends Controller
                 'documento_afectado_serie' => $orden->comprobante_serie,
                 'documento_afectado_numero' => $orden->comprobante_numero,
                 'documento_afectado_tipo' => $orden->tipo_comprobante,
+                // Para reportes la reversa pertenece a la venta original. La
+                // fecha real de emisión permanece disponible en created_at.
+                'cobrado_at' => $orden->cobrado_at ?? $orden->created_at,
                 'created_at' => now('UTC')->toIso8601String(),
                 'updated_at' => now('UTC')->toIso8601String()
             ]);
