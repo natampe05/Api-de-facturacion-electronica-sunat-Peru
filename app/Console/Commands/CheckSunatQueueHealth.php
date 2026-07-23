@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\OperationsAlertService;
+use App\Services\PostgresConnectionUsage;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +16,10 @@ class CheckSunatQueueHealth extends Command
 
     protected $description = 'Detecta trabajos SUNAT agotados, una cola fiscal atrasada o presión de conexiones';
 
-    public function handle(OperationsAlertService $alerts): int
-    {
+    public function handle(
+        OperationsAlertService $alerts,
+        PostgresConnectionUsage $connectionUsage,
+    ): int {
         if (! config('sunat_worker.enabled', true)) {
             return self::SUCCESS;
         }
@@ -80,29 +83,23 @@ class CheckSunatQueueHealth extends Command
             $this->components->warn('La cola SUNAT supera el umbral operativo.');
         }
 
-        $this->checkDatabaseConnections($alerts);
+        $this->checkDatabaseConnections($alerts, $connectionUsage);
         $this->sendStagingReviewReminder($alerts);
 
         return $exitCode;
     }
 
-    private function checkDatabaseConnections(OperationsAlertService $alerts): void
-    {
+    private function checkDatabaseConnections(
+        OperationsAlertService $alerts,
+        PostgresConnectionUsage $connectionUsage,
+    ): void {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             return;
         }
 
         try {
-            $usage = DB::selectOne(<<<'SQL'
-                select
-                    count(*)::int as active_connections,
-                    current_setting('max_connections')::int as max_connections
-                from pg_stat_activity
-                SQL);
-
-            $active = (int) ($usage->active_connections ?? 0);
-            $maximum = max((int) ($usage->max_connections ?? 0), 1);
-            $percent = round(($active / $maximum) * 100, 2);
+            $usage = $connectionUsage->measure();
+            $percent = $usage['percent'];
             $warning = max((int) config('operations.db_connections_warning_percent', 70), 1);
             $critical = max((int) config('operations.db_connections_critical_percent', 85), $warning);
 
@@ -112,8 +109,13 @@ class CheckSunatQueueHealth extends Command
 
             $severity = $percent >= $critical ? 'critical' : 'warning';
             $context = [
-                'conexiones_actuales' => $active,
-                'conexiones_maximas' => $maximum,
+                'conexiones_cliente_usadas' => $usage['used'],
+                'conexiones_ejecutando_consultas' => $usage['active'],
+                'conexiones_inactivas' => $usage['idle'],
+                'conexiones_inactivas_en_transaccion' => $usage['idle_in_transaction'],
+                'conexiones_utilizables' => $usage['usable'],
+                'conexiones_reservadas' => $usage['reserved'],
+                'conexiones_maximas_postgresql' => $usage['maximum'],
                 'porcentaje_usado' => $percent.'%',
                 'umbral_warning' => $warning.'%',
                 'umbral_critical' => $critical.'%',
